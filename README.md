@@ -13,6 +13,8 @@ We are actively working on the codebase. This repository will receive **periodic
 ## 🛠️ Tools We Use
 * [Binary Ninja 5.1.8005](https://binary.ninja/)
 * [IDA 9.1.250226](https://hex-rays.com/decompiler)
+* [Visual Studio](https://visualstudio.microsoft.com/) & [Visual Studio Code](https://code.visualstudio.com/)
+* Dead by Daylight 1.6.2 specific Unreal Engine dumper by Oleg Shabunov
 
 ## 🗺️ Roadmap
 The decompilation is currently planned in the following stages:
