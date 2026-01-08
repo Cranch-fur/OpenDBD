@@ -1,0 +1,11 @@
+Core
+CoreUObject
+Engine
+BHVRAnalytics
+Paper2D
+AkAudio
+ScaleformUI
+InputCore
+OnlineSubsystemUtils
+AIModule
+MediaAssets
