@@ -1426,7 +1426,7 @@ void UDBDGameInstance::DBD_AddSkulls(int32_t camperSkullsCount, int32_t slasherS
     // The disassembly retrieves the UniqueNetId as a TSharedPtr/TSharedRef.
     // Note: The disassembly shows manual reference count manipulation, which is handled automatically by TSharedPtr in C++.
     TSharedPtr<const FUniqueNetId> uniqueNetId;
-    if (localPlayer != nullptr)
+    if (localPlayer)
     {
         uniqueNetId = localPlayer->GetPreferredUniqueNetId();
     }
@@ -1486,4 +1486,569 @@ void UDBDGameInstance::DBD_AddSkulls(int32_t camperSkullsCount, int32_t slasherS
             }
         }
     }
+}
+
+
+
+
+void UDBDGameInstance::DBD_AddToRitual(int32_t index, float value)
+{
+    // 1. Retrieve the custom Player State.
+    // The disassembly calls a specific function "GetLocalPlayerState" which is not 
+    // part of the standard UGameInstance API.
+    class ADBDPlayerState* PlayerState = this->GetLocalPlayerState(); /* UNDEFINED ELEMENT */
+    // 2. Validate the PlayerState pointer.
+    if (PlayerState == nullptr)
+    {
+        return;
+    }
+
+    // 3. Check Object Validity and Destruction State.
+    // The disassembly performs two distinct checks here:
+    // A. It checks the Global Object Array to see if the object is marked 'PendingKill' or 'Unreachable' (Result of (Flags >> 0x1d) & 1).
+    // B. It checks the specific boolean flag at offset 0x140 bit 0x04. 
+    // bit 0x04 corresponds to 'bActorIsBeingDestroyed'.
+    if (PlayerState->IsPendingKill() || PlayerState->bActorIsBeingDestroyed)
+    {
+        return;
+    }
+
+    // 4. Access the Ritual Handler.
+    // The assembly performs a redundant validity check on the PlayerState here (checking the GUObjectArray again).
+    // This is often a result of using a macro like `IsValid(PlayerState)` or accessing a `TWeakObjectPtr` 
+    // immediately before accessing a member.
+    if (PlayerState->IsPendingKill())
+    {
+        // Retrieve the component from offset 0x778.
+        class URitualHandlerComponent* RitualHandler = PlayerState->RitualHandler;
+
+        // 5. Execute the Ritual modification.
+        // The instruction 'call URitualHandlerComponent::CheatAddToRitual' is executed.
+        // Note: The assembly does not show an explicit null check for 'RitualHandler' itself, 
+        // relying on the validity of the PlayerState.
+        RitualHandler->CheatAddToRitual(index, value); /* UNDEFINED ELEMENT */
+    }
+}
+
+
+
+
+void UDBDGameInstance::DBD_AddToStat(FName statName, float amount)
+{
+    // Retrieve the first local player from the Game Instance
+    // 14024fa17 call UGameInstance::GetLocalPlayerByIndex
+    ULocalPlayer* LocalPlayer = this->GetLocalPlayerByIndex(0);
+
+    // Retrieve the UniqueNetId (TSharedPtr) from the local player
+    // 14024fa27 call ULocalPlayer::GetPreferredUniqueNetId
+    TSharedPtr<const FUniqueNetId> UniqueNetId = nullptr;
+    if (LocalPlayer)
+    {
+        UniqueNetId = LocalPlayer->GetPreferredUniqueNetId();
+    }
+
+    // Create a stack-allocated FOnlineLeaderboardWrite object (identified by vtable initialization at 14024faa3)
+    // This object acts as a container for the stats to be written
+    FOnlineLeaderboardWrite WriteObject;
+
+    // Convert the FName statName to a string to check for substrings
+    // 14024fafe call FName::ToString
+    FString StatNameStr = statName.ToString();
+
+    // Check if the stat name contains the substring "_float"
+    // 14024fb25 call FString::Find
+    // 0xffffffff in assembly corresponds to INDEX_NONE or -1 in C++
+    int32 FoundIndex = StatNameStr.Find(TEXT("_float"), ESearchCase::IgnoreCase, ESearchDir::FromStart, -1);
+
+    if (FoundIndex == -1)
+    {
+        // If "_float" is NOT found, treat the amount as an Integer
+        // 14024fb41 cvttss2si (convert float to signed integer)
+        // 14024fb46 call FOnlineStats::SetIntStat
+        WriteObject.SetIntStat(statName, (int32)amount);
+    }
+    else
+    {
+        // If "_float" IS found, treat the amount as a Float
+        // 14024fb3a call FOnlineStats::SetFloatStat
+        WriteObject.SetFloatStat(statName, amount);
+    }
+
+    // Access the PlayerProfileDAL member variable (Offset 0x120 in assembly)
+    // 14024fb8e mov rcx, qword [rsi+0x120]
+    if (this->PlayerProfileDAL)
+    {
+        // Update the player stats in the Data Access Layer
+        // 14024fb89 call UPlayerProfileDAL::UpdatePlayerStats
+        this->PlayerProfileDAL->UpdatePlayerStats(UniqueNetId, &WriteObject);
+
+        // Upload the stats to the backend/service
+        // 14024fb95 call UPlayerProfileDAL::UploadCurrentPlayerStats
+        this->PlayerProfileDAL->UploadCurrentPlayerStats();
+    }
+
+    // Perform checks on the PlayerController to potentially load profile stats
+    if (LocalPlayer)
+    {
+        APlayerController* PlayerController = LocalPlayer->PlayerController;
+
+        if (PlayerController)
+        {
+            // Verify if the controller is of type ADBDPlayerControllerBase
+            // 14024fbaa ADBDPlayerControllerBase::GetPrivateStaticClass (Class hierarchy check)
+            ADBDPlayerControllerBase* DBDController = Cast<ADBDPlayerControllerBase>(PlayerController);
+
+            if (DBDController)
+            {
+                // The assembly performs manual checks against GUObjectArray (14024fbcb - 14024fbfc)
+                // checking flags (PendingKill, Unreachable). In C++, IsValid() covers these checks.
+                bool bIsValid = DBDController->IsValidLowLevel();
+
+                if (bIsValid)
+                {
+                    // 14024fc1d call ADBDPlayerControllerBase::Local_LoadProfileStats
+                    DBDController->Local_LoadProfileStats();
+                }
+            }
+        }
+    }
+
+    // The FOnlineLeaderboardWrite destructor and TSharedPtr destructors 
+    // are called automatically here as the stack frame unwinds.
+    // (Corresponds to 14024fc4d TSparseArray::Empty and FMemory::Free calls in assembly)
+}
+
+
+
+
+void UDBDGameInstance::DBD_AnalyticsTest()
+{
+    // Initialize a string variable with the value "Test".
+    // The assembly at 14024fcec (ResizeGrow) and 14024fd15 (Convert) represents the constructor of FString from a literal.
+    FString InProgressType = TEXT("Test");
+
+    // Initialize an empty array of analytics attributes.
+    // 14024fd1f: The stack space is zeroed out, representing an empty TArray constructor.
+    TArray<FAnalyticsEventAttribute> attr;
+
+    // Call the static function to record client progress.
+    // 14024fd2e call UDBDAnalytics::RecordClientProgress
+    // RCX = Address of InProgressType
+    // RDX = Address of attr
+    UDBDAnalytics::RecordClientProgress(InProgressType, attr);
+
+    // End of function. 
+    // The code from 14024fd33 to 14024fd85 in disassembly is the automatic destruction (destructors) 
+    // of 'attr' and 'InProgressType' as they go out of scope.
+    // The loop in disassembly iterates through 'attr' to free potential FStrings inside FAnalyticsEventAttribute,
+    // then frees the array buffer, and finally frees the 'InProgressType' string buffer.
+}
+
+
+
+
+void UDBDGameInstance::DBD_AssignNewRitual()
+{
+    // Retrieve the local player state cast to the custom DBD class
+    // 14024fd94 call UDBDGameInstance::GetLocalPlayerState
+    ADBDPlayerState* PlayerState = this->GetLocalPlayerState();
+    // Basic null check
+    // 14024fd9c test rax, rax
+    if (PlayerState == nullptr)
+    {
+        return;
+    }
+
+    // The assembly block from 14024fda1 to 14024fdf7 performs direct checks against 
+    // the global object array (GUObjectArray) and internal bitflags.
+    // It verifies if the object index is valid, if the object is not reachable, 
+    // or if it is marked as PendingKill (byte at offset 0x140 & 0x4).
+    // In standard Unreal Engine C++, this logic is encapsulated in IsValid() or IsValidLowLevel().
+    if (PlayerState->IsValidLowLevel() == false)
+    {
+        return;
+    }
+
+    // Retrieve the RitualHandler component stored in the PlayerState
+    // 14024fdf9 mov rcx, qword [r8+0x778] (Offset 0x778 corresponds to the RitualHandler pointer)
+    URitualHandlerComponent* RitualHandler = PlayerState->RitualHandler;
+    // Check if the handler exists before calling (implied safety in C++, though assembly does a direct JMP)
+    if (RitualHandler)
+    {
+        // Call the function to assign a new ritual.
+        // 14024fe09 jmp URitualHandlerComponent::AssignNewRitual
+        // The assembly uses a "tail call" (JMP instead of CALL) optimization here 
+        // because this is the last operation in the function.
+        RitualHandler->AssignNewRitual();
+    }
+}
+
+
+
+
+void UDBDGameInstance::DBD_ChangeSteamOverlayPosition(EPresenceNotificationPosition position, int32 verticalOffset, int32 horizontalOffset)
+{
+    // Initialize the module name FName
+    // 14024fe2d lea rdx, "OnlinePresence"
+    FName ModuleName = FName(TEXT("OnlinePresence"));
+
+    // Load the module checked. This retrieves the interface for the plugin.
+    // 14024fe42 call FModuleManager::LoadModuleChecked
+    IOnlinePresencePlugin& OnlinePresencePlugin = FModuleManager::LoadModuleChecked<IOnlinePresencePlugin>(ModuleName);
+
+    // Call the virtual function SetNotificationPosition.
+    // The 'position' integer is cast to the enum type.
+    // The verticalOffset and horizontalOffset arguments are ignored by the assembly implementation.
+    // 14024fe50 call qword [r8+0x158] (Resolved as SetNotificationPosition)
+    OnlinePresencePlugin.SetNotificationPosition(position);
+}
+
+
+
+
+void UDBDGameInstance::DBD_CheckForNewContent()
+{
+    // Check if the context system is valid before proceeding.
+    if (this->_contextSystem == nullptr)
+    {
+        return;
+    }
+
+    // ---------------------------------------------------------
+    // Online Presence / Data Store Logic
+    // ---------------------------------------------------------
+
+    // Obtain a shared reference to the DataStore subsystem via the plugin.
+    // The disassembly indicates a TSharedRef is returned here.
+    TSharedRef<IDataStorePresenceSubsystem> DataStoreRef = IOnlinePresencePlugin::DataStore();
+
+    // Access the interface object.
+    IDataStorePresenceSubsystem* DataStoreObj = &DataStoreRef.Get();
+
+    if (DataStoreObj)
+    {
+        // Call the virtual function at offset 0x128.
+        // Based on provided context, this is GetLocalAppBuildId.
+        // The return value (int32) is calculated but not stored or used in the subsequent logic.
+        DataStoreObj->GetLocalAppBuildId();
+    }
+
+    // Note: The disassembly shows manual reference counting decrement logic here.
+    // In C++, the TSharedRef destructor handles this automatically when DataStoreRef goes out of scope.
+
+    // ---------------------------------------------------------
+    // Game User Settings Logic
+    // ---------------------------------------------------------
+
+    // Retrieve the base Game User Settings from the global engine instance.
+    UGameUserSettings* GenericSettings = UEngine::GetGameUserSettings(GEngine);
+    if (GenericSettings == nullptr)
+    {
+        return;
+    }
+
+    // Attempt to cast the generic settings to the specific UDBDGameUserSettings class.
+    // The disassembly uses class tree index comparison, which is the internal implementation of Cast<>.
+    UDBDGameUserSettings* DBDSettings = Cast<UDBDGameUserSettings>(GenericSettings);
+    if (DBDSettings == nullptr)
+    {
+        return;
+    }
+
+    // ---------------------------------------------------------
+    // Validity Check
+    // ---------------------------------------------------------
+
+    // The disassembly checks specific internal flags (likely EInternalObjectFlags).
+    // "test al, 0x1" usually checks for PendingKill or Unreachable states in the object array.
+    if (DBDSettings->IsPendingKill())
+    {
+        return;
+    }
+
+    // ---------------------------------------------------------
+    // Content Details Logic
+    // ---------------------------------------------------------
+
+    TArray<FNewContentDetails*> NewContentDetailsArray;
+
+    // Retrieve the list of new content details.
+    UDBDDesignTunables::GetNewContentDetails(this->DesignTunables, NewContentDetailsArray);
+
+    // Initialize the maximum weight found. initialized to -1 (0xffffffff) in disassembly.
+    int32 MaxWeightFound = -1;
+
+    // Check if the array contains any elements.
+    if (NewContentDetailsArray.Num() > 0)
+    {
+        // Iterate through the content details to find the highest weight/ID.
+        for (int32 Index = 0; Index < NewContentDetailsArray.Num(); Index++)
+        {
+            FNewContentDetails* ContentItem = NewContentDetailsArray[Index];
+            if (ContentItem)
+            {
+                /* UNDEFINED ELEMENT */
+                // Accessing an int32 property at offset 0x8 of FNewContentDetails.
+                // Since the struct definition is not fully provided, we access it via pointer arithmetic.
+                // This represents the "Weight" or "News ID" of the content item.
+                int32 ItemWeight = *(int32*)((uint8*)ContentItem + 0x8);
+
+                if (ItemWeight >= MaxWeightFound)
+                {
+                    MaxWeightFound = ItemWeight;
+                }
+            }
+        }
+    }
+
+    // ---------------------------------------------------------
+    // Comparison and Transition Logic
+    // ---------------------------------------------------------
+
+    // Compare the highest weight found in the tunables against the one stored in User Settings.
+    // Offset 0x170 is explicitly identified as HighestWeightSeenNews.
+    if (MaxWeightFound != DBDSettings->HighestWeightSeenNews)
+    {
+        UGameFlowContextSystem* ContextSystem = this->_contextSystem;
+
+        // Access the Prompt Context Group.
+        // Disassembly implies usage of std::shared_ptr logic here.
+        auto& PromptContextGroup = ContextSystem->m_SystemPromptsContextGroup;
+
+        // Ensure the system is valid (simplified logic flow).
+        if (ContextSystem)
+        {
+            /* UNDEFINED ELEMENT */
+            // Call RequestTransition on the context group.
+            // Arguments derived from registers:
+            // RCX (this): PromptContextGroup._Ptr
+            // RDX (Out): Return value (shared_ptr ref)
+            // R8: 1
+            // R9: 0x5C
+            // Stack: 0x1 (true)
+
+            CTX::ContextGroup::RequestTransition(PromptContextGroup, 1, 0x5C, true);
+        }
+    }
+
+    // TArray cleanup (FMemory::Free) occurs automatically here via destructor.
+}
+
+
+
+
+void UDBDGameInstance::DBD_ClearInventory()
+{
+    // Retrieve the local player state associated with this GameInstance.
+    // Disassembly: call UDBDGameInstance::GetLocalPlayerState
+    class APlayerState* LocalPlayerState = this->GetLocalPlayerState();
+
+    // Retrieve the Saved Profile Data for the specific Player State.
+    // Disassembly: call UDBDGameInstance::GetCharacterSavedProfileDataForPlayerState
+    struct FCharacterSavedProfileData* CharacterSavedProfileData = this->GetCharacterSavedProfileDataForPlayerState(LocalPlayerState);
+
+    // The code initiates the removal of inventory items using a specific predicate.
+    // 
+    // Disassembly Notes:
+    // 1. The code manually allocates memory (operator new) and sets up a VTable 
+    //    (UE4Function_Private::TFunction...) to create a functor.
+    // 2. The function pointer passed to this functor is identified by the decompiler as 
+    //    'Scaleform::GFx::AS2::AvmButton::ActsAsButton'. This is likely an incorrect symbol 
+    //    resolution for the actual internal inventory filtering function.
+    // 3. Since the actual logic of the predicate is ambiguous due to the symbol mismatch, 
+    //    it is marked as an undefined element below.
+
+    if (CharacterSavedProfileData != nullptr)
+    {
+        // Calling RemoveAllInventoryNamed with the constructed predicate.
+        CharacterSavedProfileData->RemoveAllInventoryNamed( /* UNDEFINED ELEMENT */);
+    }
+}
+
+
+
+
+void UDBDGameInstance::DBD_DestroySteamInventory()
+{
+    // Access the persistent data member
+    UDBDPersistentData* PersistentData = this->_persistentData;
+
+    // Access the cloud inventory array from persistent data
+    // ASM: mov rax, qword [rcx+0x3b8] -> movsxd rbx, dword [rax+0x518]
+    TArray<FSteamInventoryItem>& CloudInventory = PersistentData->_cloudInventory;
+    int32_t ArrayNum = CloudInventory.Num();
+    // Check if the array is empty
+    if (ArrayNum == 0)
+    {
+        return;
+    }
+
+    // ---------------------------------------------------------
+    // Create a local copy of the array.
+    // ASM: TArray::ResizeForCopy followed by j_memcpy.
+    // This creates a safe snapshot of the inventory to iterate over.
+    // ---------------------------------------------------------
+    TArray<FSteamInventoryItem> InventoryCopy;
+
+    // Reserve memory and uninitialized count matching the source
+    InventoryCopy.Reserve(ArrayNum);
+    InventoryCopy.SetNumUninitialized(ArrayNum);
+
+    // Copy the raw memory from the source allocator to the local copy
+    // ASM: call j_memcpy
+    FMemory::Memcpy(InventoryCopy.GetData(), CloudInventory.GetData(), ArrayNum * sizeof(FSteamInventoryItem));
+
+    // ---------------------------------------------------------
+    // Iterate over the copied array
+    // ---------------------------------------------------------
+    for (int32_t Index = 0; Index < ArrayNum; Index = Index + 1)
+    {
+        FSteamInventoryItem* CurrentItem = &InventoryCopy[Index];
+
+        // Retrieve the DataStore subsystem.
+        // ASM: call IOnlinePresencePlugin::DataStore
+        // The disassembly shows logic for handling a TSharedRef/Ptr (ref counting decrement at end of loop).
+
+        /* UNDEFINED ELEMENT */
+        TSharedRef<IDataStorePresenceSubsystem> DataStoreRef = IOnlinePresencePlugin::DataStore();
+
+        IDataStorePresenceSubsystem* DataStoreObject = &DataStoreRef.Get();
+
+        // ---------------------------------------------------------
+        // Call DestroyItem (Previously VTable offset 0x168)
+        // ---------------------------------------------------------
+        // ASM: call qword [rax+0x168]
+        // Arg1 (this): DataStoreObject
+        // Arg2 (edx): CurrentItem->ItemId (dword [rdi])
+        // Arg3 (r8d): 1 (Quantity)
+        if (DataStoreObject != nullptr)
+        {
+            DataStoreObject->DestroyItem(CurrentItem->ItemId, 1);
+        }
+
+        // The TSharedRef "DataStoreRef" goes out of scope here.
+        // ASM: Logic at 0x14025017c checks reference counts and destroys the object if needed.
+        // This is handled automatically by the C++ TSharedRef destructor.
+    }
+
+    // The local array "InventoryCopy" goes out of scope here.
+    // ASM: Logic at 0x1402501af calls FMemory::Free.
+    // This is handled automatically by the TArray destructor.
+}
+
+
+
+
+void UDBDGameInstance::DBD_DisplayCurrentUserStat(FName statName)
+{
+    // Retrieve the local player at index 0
+    ULocalPlayer* LocalPlayer = this->GetLocalPlayerByIndex(0);
+    // Verify if the LocalPlayer is valid. 
+    // The disassembly performs a low-level check against GUObjectArray here (ObjObjects.NumElements and Flags).
+    // In C++, IsValid() or a nullptr check typically encapsulates this logic.
+    if (LocalPlayer == nullptr)
+    {
+        return;
+    }
+
+    // Prepare variables for the stat retrieval
+    int32 Value = 0;
+    bool bRetrievalSuccess = false;
+
+    // Access the PlayerProfileDAL member variable (Offset 0x120 in disassembly)
+    // The disassembly does not explicitly check for nullptr here, but implies it exists.
+    if (this->PlayerProfileDAL)
+    {
+        // Call the Data Access Layer to get the stat.
+        // It takes the statName and a pointer to the integer Value.
+        // Returns true (1) on success, false (0) on failure.
+        bRetrievalSuccess = this->PlayerProfileDAL->GetCurrentPlayerStat(statName, &Value);
+    }
+
+    FString DebugMessage;
+
+    // Branch based on the result of the retrieval (14025024a)
+    if (bRetrievalSuccess == true)
+    {
+        // Success case: Format "StatName : Value"
+        // 14025025a: u"%s : %i"
+        DebugMessage = FString::Printf(TEXT("%s : %i"), *statName.ToString(), Value);
+    }
+    else
+    {
+        // Failure case: Format "StatName : Could not retrieve."
+        // 14025028a: u"%s : Could not retrieve."
+        DebugMessage = FString::Printf(TEXT("%s : Could not retrieve."), *statName.ToString());
+    }
+
+    // Display the message on screen via GEngine
+    // Disassembly loads GEngine (1402502bc)
+    if (GEngine)
+    {
+        // Arguments identified from disassembly:
+        // Key (edx): -1 (0xffffffff)
+        // TimeToDisplay (xmm2): 10.0f (0x41200000)
+        // DisplayColor (r9d): FColor::Cyan
+        // DebugMessage: The formatted string
+        // bNewerOnTop (stack+0x28): true (0x1)
+        // TextScale (stack+0x30): FVector2D::UnitVector
+
+        GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Cyan, DebugMessage, true, FVector2D::UnitVector);
+    }
+}
+
+
+
+
+void UDBDGameInstance::DBD_DumpSessions()
+{
+    // Call virtual function to get the World.
+    // Based on the offset 0x108 and usage (accessing AuthorityGameMode), this represents GetWorld().
+    class UWorld* World = this->GetWorld();
+    if (World == nullptr)
+    {
+        return;
+    }
+
+    // Retrieve AuthorityGameMode.
+    // In UE4.13 UWorld, offset 0xF0 corresponds to the AuthorityGameMode member.
+    class AGameMode* AuthorityGameMode = World->AuthorityGameMode;
+    // Check if AuthorityGameMode is not null.
+    if (AuthorityGameMode == nullptr)
+    {
+        return;
+    }
+
+    // Check if AuthorityGameMode is valid (not pending kill / accessible in GUObjectArray).
+    // The disassembly checks bit 0x4 at offset 0x140 (bActorIsBeingDestroyed).
+    if (IsValid(AuthorityGameMode) == false)
+    {
+        return;
+    }
+
+    // Retrieve GameSession from the GameMode.
+    // In AGameMode, offset 0x3C0 corresponds to the GameSession member.
+    class AGameSession* GameSession = AuthorityGameMode->GameSession;
+    if (GameSession == nullptr)
+    {
+        return;
+    }
+
+    // Verify that the GameSession is of type ADBDGameSession.
+    // The disassembly explicitly compares ClassTreeIndex against ADBDGameSession::StaticClass().
+    if (GameSession->IsA(ADBDGameSession::StaticClass()) == false)
+    {
+        return;
+    }
+
+    // Check if GameSession is valid (not pending kill / accessible in GUObjectArray).
+    // The disassembly repeats the check for bActorIsBeingDestroyed (offset 0x140, bit 0x4).
+    if (IsValid(GameSession) == false)
+    {
+        return;
+    }
+
+    // Call the virtual function DumpSessionState.
+    // The provided VTable info identifies offset 0x678 as DumpSessionState.
+    GameSession->DumpSessionState();
 }
