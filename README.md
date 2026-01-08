@@ -1,8 +1,18 @@
-# OpenDBD
+<img width="384" height="128" alt="OpenDBD" src="https://github.com/user-attachments/assets/5bd34779-046c-48ea-9ff5-2f469ee2e845" />
+
 An open-source project focused on reverse engineering **Dead by Daylight** to ensure its preservation and study. The repository is strictly based on game version **1.6.2**.
 
-## 🔄 Project Status
-We are actively working on the codebase. This repository will receive **periodic bulk updates** as we successfully decompile and verify new classes.
+## 🗽 Project Status
+We are actively working on the codebase. This repository will receive **periodic updates** as we successfully decompile and verify new functions and classes.
+
+## 🧑‍💻 Our Team
+* Cranch
+* Oleg Shabunov
+* NyanAlex1
+
+## 🛠️ Tools We Use
+* [Binary Ninja 5.1.8005](https://binary.ninja/)
+* [IDA 9.1.250226](https://hex-rays.com/decompiler)
 
 ## 🗺️ Roadmap
 The decompilation is currently planned in the following stages:
