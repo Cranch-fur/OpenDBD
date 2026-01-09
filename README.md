@@ -12,11 +12,12 @@ We are actively working on the codebase. This repository will receive **periodic
 
 ## 🛠️ Tools We Use
 * [Binary Ninja 5.1.8005](https://binary.ninja/)
-* [IDA 9.1.250226](https://hex-rays.com/decompiler)
+* [IDA 9.1.250226](https://hex-rays.com/decompiler/)
 * [Google Gemini 3 Pro](https://gemini.google.com/)
 * [FModel](https://fmodel.app/)
 * [HxD](https://mh-nexus.de/en/hxd/)
-* [Visual Studio](https://visualstudio.microsoft.com/) & [Visual Studio Code](https://code.visualstudio.com/)
+* [Visual Studio 2022/2026](https://visualstudio.microsoft.com/)
+* [Visual Studio Code](https://code.visualstudio.com/)
 * Dead by Daylight 1.6.2 specific Unreal Engine Dumper by Oleg Shabunov
 
 ## 🗺️ Roadmap
