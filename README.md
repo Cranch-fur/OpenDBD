@@ -6,7 +6,7 @@ An open-source project focused on reverse engineering **Dead by Daylight** to en
 We are actively working on the codebase. This repository will receive **periodic updates** as we successfully decompile and verify new functions and classes.
 
 ## 🧑‍💻 Our Team
-* Cranch
+* [Cranch](https://t.me/cranch_fur)
 * Oleg Shabunov
 * NyanAlex
 
