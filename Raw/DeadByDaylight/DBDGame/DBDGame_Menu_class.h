@@ -1,0 +1,152 @@
+class __base(AGameMode, 0) ADBDGame_Menu
+{
+/* 0x0000 */     struct ADBDGame_Menu::VTable* vtable;
+/* 0x0008 */     __inherited enum EObjectFlags UObjectBase::ObjectFlags;
+/* 0x000c */     __inherited int32_t UObjectBase::InternalIndex;
+/* 0x0010 */     __inherited class UClass* UObjectBase::ClassPrivate;
+/* 0x0018 */     __inherited class FName UObjectBase::NamePrivate;
+/* 0x0020 */     __inherited class UObject* UObjectBase::OuterPrivate;
+/* 0x0028 */     __inherited struct FActorTickFunction AActor::PrimaryActorTick;
+/* 0x0078 */     __inherited float AActor::CustomTimeDilation;
+/* 0x007c */     __inherited union
+/* 0x007c */     {
+/* 0x007c + 0x1 */         uint8_t bHidden;
+/* 0x007c + 0x2 */         uint8_t bNetTemporary;
+/* 0x007c + 0x4 */         uint8_t bNetStartup;
+/* 0x007c + 0x8 */         uint8_t bOnlyRelevantToOwner;
+/* 0x007c + 0x10 */         uint8_t bAlwaysRelevant;
+/* 0x007c + 0x20 */         uint8_t bReplicateMovement;
+/* 0x007c + 0x40 */         uint8_t bTearOff;
+/* 0x007c + 0x80 */         uint8_t bExchangedRoles;
+/* 0x007d */     } __bitfield7c;
+/* 0x007d */     __inherited union
+/* 0x007d */     {
+/* 0x007d + 0x1 */         uint8_t bPendingNetUpdate;
+/* 0x007d + 0x2 */         uint8_t bNetLoadOnClient;
+/* 0x007d + 0x4 */         uint8_t bNetUseOwnerRelevancy;
+/* 0x007d + 0x8 */         uint8_t bBlockInput;
+/* 0x007d + 0x10 */         uint8_t bRunningUserConstructionScript;
+/* 0x007d + 0x20 */         uint8_t bAllowTickBeforeBeginPlay;
+/* 0x007d + 0x40 */         uint8_t bHasFinishedSpawning;
+/* 0x007d + 0x80 */         uint8_t bTickFunctionsRegistered;
+/* 0x007e */     } __bitfield7d;
+/* 0x007e */     __inherited union
+/* 0x007e */     {
+/* 0x007e + 0x1 */         uint8_t bActorEnableCollision;
+/* 0x007e + 0x2 */         uint8_t bNetCheckedInitialPhysicsState;
+/* 0x007e + 0x4 */         uint8_t bReplicates;
+/* 0x007f */     } __bitfield7e;
+/* 0x007f */     __padding char _7f[1];
+/* 0x0080 */     __inherited class FName AActor::NetDriverName;
+/* 0x0088 */     __inherited class TEnumAsByte<enum ENetRole> AActor::RemoteRole;
+/* 0x0090 */     __inherited class AActor* AActor::Owner;
+/* 0x0098 */     __inherited struct FRepMovement AActor::ReplicatedMovement;
+/* 0x00cc */     __padding char _cc[4];
+/* 0x00d0 */     __inherited struct FRepAttachment AActor::AttachmentReplication;
+/* 0x0110 */     __inherited class TEnumAsByte<enum ENetRole> AActor::Role;
+/* 0x0111 */     __inherited class TEnumAsByte<enum ENetDormancy> AActor::NetDormancy;
+/* 0x0112 */     __inherited class TEnumAsByte<enum EAutoReceiveInput::Type> AActor::AutoReceiveInput;
+/* 0x0114 */     __inherited int32_t AActor::InputPriority;
+/* 0x0118 */     __inherited class UInputComponent* AActor::InputComponent;
+/* 0x0120 */     __inherited class TEnumAsByte<enum EInputConsumeOptions> AActor::InputConsumeOption_DEPRECATED;
+/* 0x0124 */     __inherited float AActor::NetCullDistanceSquared;
+/* 0x0128 */     __inherited int32_t AActor::NetTag;
+/* 0x012c */     __inherited float AActor::NetUpdateTime;
+/* 0x0130 */     __inherited float AActor::NetUpdateFrequency;
+/* 0x0134 */     __inherited float AActor::MinNetUpdateFrequency;
+/* 0x0138 */     __inherited float AActor::NetPriority;
+/* 0x013c */     __inherited float AActor::LastNetUpdateTime;
+/* 0x0140 */     __inherited union
+/* 0x0140 */     {
+/* 0x0140 + 0x1 */         uint8_t bAutoDestroyWhenFinished;
+/* 0x0140 + 0x2 */         uint8_t bCanBeDamaged;
+/* 0x0140 + 0x4 */         uint8_t bActorIsBeingDestroyed;
+/* 0x0140 + 0x8 */         uint8_t bCollideWhenPlacing;
+/* 0x0140 + 0x10 */         uint8_t bFindCameraComponentWhenViewTarget;
+/* 0x0140 + 0x20 */         uint8_t bRelevantForNetworkReplays;
+/* 0x0140 + 0x40 */         uint8_t bGenerateOverlapEventsDuringLevelStreaming;
+/* 0x0141 */     } __bitfield140;
+/* 0x0141 */     __inherited enum ESpawnActorCollisionHandlingMethod AActor::SpawnCollisionHandlingMethod;
+/* 0x0144 */     __inherited float AActor::CreationTime;
+/* 0x0148 */     __inherited class APawn* AActor::Instigator;
+/* 0x0150 */     __inherited class TArray<AActor *,FDefaultAllocator> AActor::Children;
+/* 0x0160 */     __inherited class USceneComponent* AActor::RootComponent;
+/* 0x0168 */     __inherited class TArray<AMatineeActor *,FDefaultAllocator> AActor::ControllingMatineeActors;
+/* 0x0178 */     __inherited float AActor::InitialLifeSpan;
+/* 0x017c */     __padding char _17c[4];
+/* 0x0180 */     __inherited struct FTimerHandle AActor::TimerHandle_LifeSpanExpired;
+/* 0x0188 */     __inherited class TArray<FName,FDefaultAllocator> AActor::Layers;
+/* 0x0198 */     __inherited struct TWeakObjectPtr<AActor,FWeakObjectPtr> AActor::ParentComponentActor_DEPRECATED;
+/* 0x01a0 */     __inherited struct TWeakObjectPtr<UChildActorComponent,FWeakObjectPtr> AActor::ParentComponent;
+/* 0x01a8 */     __inherited union
+/* 0x01a8 */     {
+/* 0x01a8 + 0x1 */         uint8_t bAllowReceiveTickEventOnDedicatedServer;
+/* 0x01a8 + 0x2 */         uint8_t bActorInitialized;
+/* 0x01a8 + 0x4 */         enum AActor::EActorBeginPlayState ActorHasBegunPlay;
+/* 0x01a8 + 0x8 */         uint8_t bActorSeamlessTraveled;
+/* 0x01a8 + 0x10 */         uint8_t bIgnoresOriginShifting;
+/* 0x01a8 + 0x20 */         uint8_t bEnableAutoLODGeneration;
+/* 0x01a9 */     } __bitfield1a8;
+/* 0x01a9 */     __padding char _1a9[7];
+/* 0x01b0 */     __inherited class TArray<FName,FDefaultAllocator> AActor::Tags;
+/* 0x01c0 */     __inherited uint64_t AActor::HiddenEditorViews;
+/* 0x01c8 */     __inherited class FTakeAnyDamageSignature AActor::OnTakeAnyDamage;
+/* 0x01d8 */     __inherited class FTakePointDamageSignature AActor::OnTakePointDamage;
+/* 0x01e8 */     __inherited class FActorBeginOverlapSignature AActor::OnActorBeginOverlap;
+/* 0x01f8 */     __inherited class FActorEndOverlapSignature AActor::OnActorEndOverlap;
+/* 0x0208 */     __inherited class FActorBeginCursorOverSignature AActor::OnBeginCursorOver;
+/* 0x0218 */     __inherited class FActorEndCursorOverSignature AActor::OnEndCursorOver;
+/* 0x0228 */     __inherited class FActorOnClickedSignature AActor::OnClicked;
+/* 0x0238 */     __inherited class FActorOnReleasedSignature AActor::OnReleased;
+/* 0x0248 */     __inherited class FActorOnInputTouchBeginSignature AActor::OnInputTouchBegin;
+/* 0x0258 */     __inherited class FActorOnInputTouchEndSignature AActor::OnInputTouchEnd;
+/* 0x0268 */     __inherited class FActorBeginTouchOverSignature AActor::OnInputTouchEnter;
+/* 0x0278 */     __inherited class FActorEndTouchOverSignature AActor::OnInputTouchLeave;
+/* 0x0288 */     __inherited class FActorHitSignature AActor::OnActorHit;
+/* 0x0298 */     __inherited class FActorDestroyedSignature AActor::OnDestroyed;
+/* 0x02a8 */     __inherited class FActorEndPlaySignature AActor::OnEndPlay;
+/* 0x02b8 */     __inherited class TSet<UActorComponent *,DefaultKeyFuncs<UActorComponent *,0>,FDefaultSetAllocator> AActor::OwnedComponents;
+/* 0x0308 */     __inherited class TSet<UActorComponent *,DefaultKeyFuncs<UActorComponent *,0>,FDefaultSetAllocator> AActor::ReplicatedComponents;
+/* 0x0358 */     __inherited class TArray<UActorComponent *,FDefaultAllocator> AActor::BlueprintCreatedComponents;
+/* 0x0368 */     __inherited class TArray<UActorComponent *,FDefaultAllocator> AActor::InstanceComponents;
+/* 0x0378 */     __inherited class FRenderCommandFence AActor::DetachFence;
+/* 0x0380 */     __inherited class FName AGameMode::MatchState;
+/* 0x0388 */     __inherited union
+/* 0x0388 */     {
+/* 0x0388 + 0x1 */         uint32_t bUseSeamlessTravel;
+/* 0x0388 + 0x2 */         uint32_t bPauseable;
+/* 0x0388 + 0x4 */         uint32_t bStartPlayersAsSpectators;
+/* 0x0388 + 0x8 */         uint32_t bDelayedStart;
+/* 0x038c */     } __bitfield388;
+/* 0x038c */     __padding char _38c[4];
+/* 0x0390 */     __inherited class FString AGameMode::OptionsString;
+/* 0x03a0 */     __inherited class TSubclassOf<APawn> AGameMode::DefaultPawnClass;
+/* 0x03a8 */     __inherited class TSubclassOf<AHUD> AGameMode::HUDClass;
+/* 0x03b0 */     __inherited int32_t AGameMode::NumSpectators;
+/* 0x03b4 */     __inherited int32_t AGameMode::NumPlayers;
+/* 0x03b8 */     __inherited int32_t AGameMode::NumBots;
+/* 0x03bc */     __inherited float AGameMode::MinRespawnDelay;
+/* 0x03c0 */     __inherited class AGameSession* AGameMode::GameSession;
+/* 0x03c8 */     __inherited int32_t AGameMode::NumTravellingPlayers;
+/* 0x03cc */     __inherited int32_t AGameMode::CurrentID;
+/* 0x03d0 */     __inherited class FText AGameMode::DefaultPlayerName;
+/* 0x03e8 */     __inherited class TSubclassOf<ULocalMessage> AGameMode::EngineMessageClass;
+/* 0x03f0 */     __inherited class TSubclassOf<APlayerController> AGameMode::PlayerControllerClass;
+/* 0x03f8 */     __inherited class TSubclassOf<ASpectatorPawn> AGameMode::SpectatorClass;
+/* 0x0400 */     __inherited class TSubclassOf<APlayerController> AGameMode::ReplaySpectatorPlayerControllerClass;
+/* 0x0408 */     __inherited class TSubclassOf<APlayerState> AGameMode::PlayerStateClass;
+/* 0x0410 */     __inherited class TSubclassOf<AGameState> AGameMode::GameStateClass;
+/* 0x0418 */     __inherited class AGameState* AGameMode::GameState;
+/* 0x0420 */     __inherited class TArray<APlayerState *,FDefaultAllocator> AGameMode::InactivePlayerArray;
+/* 0x0430 */     __inherited class TArray<TBaseDelegate<bool>,FDefaultAllocator> AGameMode::Pausers;
+/* 0x0440 */     __inherited class TArray<FGameClassShortName,FDefaultAllocator> AGameMode::GameModeClassAliases;
+/* 0x0450 */     __inherited float AGameMode::InactivePlayerStateLifeSpan;
+/* 0x0454 */     __inherited uint8_t AGameMode::bHandleDedicatedServerReplays;
+/* 0x0455 */     __padding char _455[3];
+/* 0x0458 */     uint8_t StartWithSlasher;
+/* 0x0459 */     uint8_t _introCamPlayed;
+/* 0x045a */     enum EGameIntroSteps _gameIntroSteps;
+/* 0x0460 */     class AMatineeActor* _matineeFadeActor;
+/* 0x0468 */     class AMatineeActor* _matineeIntroActor;
+/* 0x0470 */     class AMatineeActor* _matineeLoopActor;
+/* 0x0478 */ };

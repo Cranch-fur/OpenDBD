@@ -1,0 +1,8 @@
+ADBDGame_Menu::ADBDGame_Menu
+ADBDGame_Menu::GetGameSessionClass
+ADBDGame_Menu::PostInitializeComponents
+ADBDGame_Menu::PostLogin
+ADBDGame_Menu::PostSeamlessTravel
+ADBDGame_Menu::SetMatineeIntro
+ADBDGame_Menu::Tick
+ADBDGame_Menu::UpdatePlayerData
