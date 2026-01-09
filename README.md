@@ -14,12 +14,14 @@ We are actively working on the codebase. This repository will receive **periodic
 * [Binary Ninja 5.1.8005](https://binary.ninja/)
 * [IDA 9.1.250226](https://hex-rays.com/decompiler)
 * [Google Gemini 3 Pro](https://gemini.google.com/)
+* [FModel](https://fmodel.app/)
+* [HxD](https://mh-nexus.de/en/hxd/)
 * [Visual Studio](https://visualstudio.microsoft.com/) & [Visual Studio Code](https://code.visualstudio.com/)
 * Dead by Daylight 1.6.2 specific Unreal Engine Dumper by Oleg Shabunov
 
 ## 🗺️ Roadmap
 The decompilation is currently planned in the following stages:
-1.  **Core Classes [.exe/C++]** Reverse engineering of game-specific logic and classes (e.g., `\Source\DeadByDaylight\DBDGame`).
+1.  **Core Classes [.exe/C++]** Reverse engineering of game-specific logic and classes (e.g., `\Source\DeadByDaylight\DBDGame\`).
 2.  **Plugins [.exe/C++]** Reverse engineering of game-specific plugins and subsystems (e.g., `\Source\OnlinePresence\`).
 3.  **Project Reconstruction** Full reconstruction of the **Unreal Engine Project** files tailored for usability.
 
