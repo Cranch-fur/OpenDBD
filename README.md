@@ -8,7 +8,7 @@ We are actively working on the codebase. This repository will receive **periodic
 ## 🧑‍💻 Our Team
 * Cranch
 * Oleg Shabunov
-* NyanAlex1
+* NyanAlex
 
 ## 🛠️ Tools We Use
 * [Binary Ninja 5.1.8005](https://binary.ninja/)
