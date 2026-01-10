@@ -3942,7 +3942,7 @@ ULightingInterpolator* UDBDGameInstance::GetLightInterpolator()
 
 
 
-class ULightingHelper* UDBDGameInstance::GetLightingHelper()
+ULightingHelper* UDBDGameInstance::GetLightingHelper()
 {
     // The disassembly performs a manual check against GUObjectArray and internal object flags 
     // to verify if the object is reachable. In standard UE4 C++, this is encapsulated by IsValid().
@@ -4299,7 +4299,7 @@ UClass* UDBDGameInstance::GetMenuCharacterSynchronous(int32_t inCharacterIndex)
 
 
 
-FOfferingProperties* UDBDGameInstance::GetOffering(uint8_t index) const
+FOfferingProperties* UDBDGameInstance::GetOffering(uint8_t index)
 {
     // Retrieve the FName identifier for the offering at the given index.
     // The disassembly sets up a stack location (rsp+0x30) to receive the FName,
@@ -4343,7 +4343,7 @@ UOfferingHandler* UDBDGameInstance::GetOfferingHandler()
 
 
 
-FName UDBDGameInstance::GetOfferingName(uint8_t index) const
+FName UDBDGameInstance::GetOfferingName(uint8_t index)
 {
     // Retrieve the current GameState.
     class ADBDGameState* GameState = this->GetGameState();
@@ -4373,4 +4373,481 @@ FName UDBDGameInstance::GetOfferingName(uint8_t index) const
 
     // Return NAME_None if the GameState is invalid, being destroyed, or the index is out of bounds.
     return NAME_None;
+}
+
+
+
+
+int32 UDBDGameInstance::GetOfferingOfTypeCount(EOfferingEffectType type)
+{
+    // 14025bb17: Call internal helper to check if the offering exists.
+    // If this returns false (0), the function returns 0 immediately.
+    if (this->HasOfferingOfType(type) == false)
+    {
+        // 14025bbda: Return 0 (ebx is initialized to 0 at 14025bb15)
+        return 0;
+    }
+
+    /** * The disassembly from 14025bb24 to 14025bb99 represents the inlined logic
+     * of a TMap::Find or TMap::operator[] lookup.
+     * * It performs the following steps:
+     * 1. Checks ArrayNum vs NumFreeIndices (validity check).
+     * 2. Hashes the input 'type'.
+     * 3. Traverses the linked list in the hash bucket.
+     * 4. Compares the key (type) at offset 0 of the element.
+     */
+
+     // Attempt to find the entry in the map.
+    const FOfferingContext* FoundEntry = this->_resultEffects01.Find(type);
+
+    /**
+     * 14025bbc4: If the entry is found (which is implied to be true if HasOfferingOfType is true),
+     * the code performs a subtraction of two values within the element structure.
+     * * Assembly:
+     * mov eax, dword [rbx+0x10]  ; Load value at Offset 0x10
+     * sub eax, dword [rbx+0x3c]  ; Subtract value at Offset 0x3C
+     * * Note: In the raw assembly, if the loop finishes without finding the item (rbx == 0),
+     * it would crash at 0x10. The code relies on HasOfferingOfType ensuring existence.
+     */
+    if (FoundEntry != nullptr)
+    {
+        // Calculate the remaining amount based on the offsets.
+        // We access the members of the struct which map to 0x10 and 0x3C.
+        return FoundEntry->TotalCount - FoundEntry->ConsumedCount;
+    }
+
+    // Default return if logic fails (though technically unreachable based on assembly flow checks).
+    return 0;
+}
+
+
+
+
+int32 UDBDGameInstance::GetOfferingOwner(uint8 index)
+{
+    // 14025bbfd: Retrieve the GameState.
+    ADBDGameState* GameState = this->GetGameState();
+
+    /**
+     * 14025bc05 - 14025bc5b: Validation Logic.
+     * The assembly performs a complex check involving the GUObjectArray (Global Object Array)
+     * and specific flags (0x20000000 / PendingKill) and a specific byte offset [0x140] on the actor.
+     * In high-level UE4 C++, this sequence represents the standard IsValid() check,
+     * which verifies the object pointer is not null and is not pending kill/garbage collection.
+     */
+    if (IsValid(GameState) == false)
+    {
+        // 14025bc84: If GameState is null or invalid, return -1 (0xFFFFFFFF).
+        return -1;
+    }
+
+    /**
+     * 14025bc61: Array Bounds Check.
+     * Checks if the requested index is within the valid range of the Offerings array.
+     * Note: Assembly explicitly casts the uint8 index to int32/uint32 for comparison.
+     */
+    if ((int32)index >= GameState->_levelOfferings.Offerings.Num())
+    {
+        // 14025bc84: If index is out of bounds, return -1.
+        return -1;
+    }
+
+    /**
+     * 14025bc76: Data Retrieval.
+     * 1. Accesses the AllocatorInstance.Data pointer of the TArray.
+     * 2. Calculates offset: index * 16 (0x10).
+     * 3. Returns the first 4 bytes (int32) at that offset.
+     */
+    return GameState->_levelOfferings.Offerings[index].OwnerID;
+}
+
+
+
+
+int32 UDBDGameInstance::GetOfferingsCount()
+{
+    // 14025bca6: Retrieve the GameState instance.
+    ADBDGameState* GameState = this->GetGameState();
+
+    /**
+     * 14025bcb1 - 14025bd04: Validation Logic.
+     * The assembly performs a sequence of checks:
+     * 1. Checks if GameState pointer is null.
+     * 2. Checks against GUObjectArray (Global Object Table) using InternalIndex.
+     * 3. Checks specific flags (0x20000000 - PendingKill).
+     * 4. Checks internal actor flags (likely IsBeingDestroyed).
+     * * In UE4 C++, this entire block is encapsulated by the IsValid() function.
+     */
+    if (IsValid(GameState) == false)
+    {
+        // 14025bd13: If the GameState is null or invalid, return 0.
+        return 0;
+    }
+
+    /**
+     * 14025bd06: Retrieve Array Size.
+     * Accesses `_levelOfferings.Offerings.ArrayNum`.
+     * In C++, TArray.Num() returns the ArrayNum member.
+     */
+    return GameState->_levelOfferings.Offerings.Num();
+}
+
+
+
+
+float GetOfferingsModification(EOfferingEffectType type, int32_t playerId)
+{
+    int64_t playerId_64 = (int64_t)playerId;
+    float result = 0.0f;
+
+    // Check if the outer map is valid/initialized (Pseudo: ArrayNum != NumFreeIndices check implies IsEmpty check)
+    if (this->_resultEffects01.Num() == 0)
+    {
+        return result;
+    }
+
+    // ---------------------------------------------------------
+    // Step 1: Find the effect entry for the specific Offering Type
+    // ---------------------------------------------------------
+
+    // This block replicates the manual hash lookup seen in disassembly (0x14025bd79 - 0x14025bda9)
+    TMap<int32, FOfferingModifierData>* InnerMapPtr = this->_resultEffects01.Find((uint8)type);
+    if (InnerMapPtr == nullptr)
+    {
+        return 0.0f;
+    }
+
+    // ---------------------------------------------------------
+    // Step 2: Retrieve Base/Global Modification (Key: -1)
+    // ---------------------------------------------------------
+
+    // The disassembly checks key against 0xffffffff (-1) at 0x14025be8c.
+    // This implies a "Global" or "Default" modifier is stored under key -1.
+    if (InnerMapPtr->Num() > 0)
+    {
+        const int32 GlobalKey = -1;
+
+        // Manual iteration logic in ASM replaced by TMap::Find for readability/functionality
+        FOfferingModifierData* GlobalData = InnerMapPtr->Find(GlobalKey);
+        if (GlobalData != nullptr)
+        {
+            // ASM: addss xmm0, dword [rdi+0x28] (0x14025c1cd)
+            result += GlobalData->Modifier;
+        }
+    }
+
+    // ---------------------------------------------------------
+    // Step 3: Retrieve Player Specific Modification (Key: playerId)
+    // ---------------------------------------------------------
+
+    // ASM: cmp ebp, 0xffffffff (0x14025bf94)
+    if (playerId != -1)
+    {
+        // The disassembly repeats the outer lookup here (common in unoptimized builds),
+        // effectively getting 'InnerMapPtr' again.
+
+        if (this->_resultEffects01.Num() > 0) // Re-check outer map (0x14025bfab)
+        {
+            // We already have InnerMapPtr from Step 1, but to strictly follow the 
+            // disassembly flow which re-acquires the pointer:
+            TMap<int32, FOfferingModifierData>* ReAcquiredInnerMap = this->_resultEffects01.Find((uint8)type);
+
+            if (ReAcquiredInnerMap != nullptr)
+            {
+                // Look for the specific player ID
+                // ASM: cmp dword [rdx+r8], ebp (0x14025c067)
+                FOfferingModifierData* PlayerData = ReAcquiredInnerMap->Find(playerId);
+                if (PlayerData != nullptr)
+                {
+                    // ASM: addss xmm0, dword [rdi+0x28] (0x14025c1cd logic combined)
+                    result += PlayerData->Modifier;
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+
+
+
+float GetOfferingsScoreModification(FScoreValue* scoreVal, int32_t playerID, EPlayerRole playerRole)
+{
+    // 14025c1f0: Initialize accumulator (xmm6 in ASM)
+    float totalModification = 0.0f;
+
+    // 14025c210: Validation check
+    if (scoreVal == nullptr)
+    {
+        return 0.0f;
+    }
+
+    // 14025c22d: Initialize a TArray to store effect types. 
+    // ASM allocates space on stack and clears memory.
+    TArray<EOfferingEffectType> EffectTypes;
+
+    // 14025c23d: Call static helper to populate the array
+    /* UNDEFINED ELEMENT - FOffering::GetOfferingEffects is likely a static game-specific function */
+    FOffering::GetOfferingEffects(scoreVal, &EffectTypes, playerRole);
+
+    // 14025c24f: Check if array has elements before iterating
+    if (EffectTypes.Num() > 0)
+    {
+        // Iterate through the collected EffectTypes
+        // ASM: 14025c6d4 (loop start) to 14025c6d1 (cmp rsi, rbp)
+        for (const EOfferingEffectType& Type : EffectTypes)
+        {
+            // Check if the outer map has data
+            if (this->_resultEffects01.Num() == 0)
+            {
+                continue;
+            }
+
+            // ---------------------------------------------------------
+            // Step 1: Find the inner map for the current EffectType
+            // ---------------------------------------------------------
+            // ASM: 14025c2a2 (Hash calculation for outer map)
+            TMap<int32, FOfferingModifierData>* InnerMapPtr = this->_resultEffects01.Find((uint8)Type);
+
+            if (InnerMapPtr != nullptr)
+            {
+                // ---------------------------------------------------------
+                // Step 2: Retrieve Base/Global Modification (Key: -1)
+                // ---------------------------------------------------------
+                // ASM: 14025c3ac - cmp ..., 0xffffffff
+                const int32 GlobalKey = -1;
+                FOfferingModifierData* GlobalData = InnerMapPtr->Find(GlobalKey);
+
+                if (GlobalData != nullptr)
+                {
+                    // ASM: 14025c3ae (accessing data) -> accumulated later
+                    totalModification += GlobalData->Modifier;
+                }
+
+                // ---------------------------------------------------------
+                // Step 3: Retrieve Player Specific Modification (Key: playerId)
+                // ---------------------------------------------------------
+                // ASM: 14025c4b6 - cmp playerID, -1
+                if (playerID != -1)
+                {
+                    // Note: The assembly actually performs the outer map lookup *again* here 
+                    // (see ASM 14025c4d0). In optimized C++, we would reuse 'InnerMapPtr', 
+                    // but strictly following the logic flow implies checking the structure again.
+                    // We will use the existing pointer for readability as the result is identical.
+
+                    // ASM: 14025c58b - cmp [rdx+r8], playerID
+                    FOfferingModifierData* PlayerData = InnerMapPtr->Find(playerID);
+
+                    if (PlayerData != nullptr)
+                    {
+                        // ASM: 14025c6c9 - addss xmm6, dword [rax+0x28]
+                        totalModification += PlayerData->Modifier;
+                    }
+                }
+            }
+        }
+    }
+
+    // 14025c6e9: Clean up TArray memory.
+    // In C++, the TArray destructor is called automatically here as EffectTypes goes out of scope.
+    // FMemory::Free(Data_2); 
+
+    return totalModification;
+}
+
+
+
+
+FName GetOfferingsValue(EOfferingEffectType type, int32_t playerId)
+{
+    // 14025c7eb: Default return value is NAME_None (0)
+    FName Result = NAME_None;
+
+    // Check if the outer map has data (ASM: 14025c77d)
+    if (this->_resultEffects01.Num() == 0)
+    {
+        return Result;
+    }
+
+    // ---------------------------------------------------------
+    // Step 1: Find the inner map for the specific Offering Type
+    // ---------------------------------------------------------
+    // ASM: 14025c798 - Hash lookup for Type
+    TMap<int32, FOfferingModifierData>* InnerMapPtr = this->_resultEffects01.Find((uint8)type);
+
+    if (InnerMapPtr != nullptr)
+    {
+        // Note: The assembly at 14025c81d performs a redundant outer map lookup here 
+        // (likely due to compiler inlining or macro expansion in the original code), 
+        // but effectively it just proceeds to look up the playerId in the inner map.
+
+        // ---------------------------------------------------------
+        // Step 2: Retrieve Value for specific Player (Key: playerId)
+        // ---------------------------------------------------------
+        // ASM: 14025c8ad - Hashing playerId (rbp)
+        // ASM: 14025c8b3 - Inner Map Lookup
+        FOfferingModifierData* FoundData = InnerMapPtr->Find(playerId);
+
+        if (FoundData != nullptr)
+        {
+            // ASM: 14025ca07 - mov rax, qword [rsi+0x20]
+            // Reads the FName at offset 0x20 relative to the element start
+            Result = FoundData->NameValue;
+        }
+    }
+
+    return Result;
+}
+
+
+
+
+TSubclassOf<class UOnlineSession> UDBDGameInstance::GetOnlineSessionClass()
+{
+    // The disassembly explicitly loads the string "/Script/DeadByDaylight" 
+    // and calls GetPrivateStaticClass on UDBDOnlineSessionClient.
+    // In standard UE4 development, this is often wrapped in UDBDOnlineSessionClient::StaticClass(), 
+    // but here we call the underlying static function directly as seen in the assembly.
+
+    class UClass* ResultClass = UDBDOnlineSessionClient::GetPrivateStaticClass(TEXT("/Script/DeadByDaylight"));
+
+    // Return the result (The compiler handles the implicit conversion to TSubclassOf<UOnlineSession>)
+    return ResultClass;
+}
+
+
+
+
+class UOnlineSystemHandler* UDBDGameInstance::GetOnlineSystemHandler()
+{
+    // Retrieve the stored Context System pointer
+    class UGameFlowContextSystem* ContextSystem = this->_contextSystem;
+
+    /**
+     * The disassembly performs an inlined validity check here:
+     * 1. Checks if the pointer is not null.
+     * 2. Looks up the object in the global `GUObjectArray` using `InternalIndex`.
+     * 3. Checks the object flags (specifically bit 29, 0x20000000) to ensure it is not Unreachable/PendingKill.
+     * * In standard Unreal Engine C++, this logic is encapsulated by the global IsValid() function.
+     */
+    if (IsValid(ContextSystem) == false)
+    {
+        return nullptr;
+    }
+
+    // Return the OnlineSystemHandler stored within the valid ContextSystem
+    return ContextSystem->m_OnlineSystemHandler;
+}
+
+
+
+
+FPlayerPersistentData* UDBDGameInstance::GetPlayerPersistentDataForPlayerState(class ADBDPlayerState* playerState)
+{
+    // The disassembly performs a strict validity check on the playerState argument.
+    // It checks for nullptr, verifies the object exists in the global GUObjectArray, 
+    // and checks internal flags (likely EInternalObjectFlags::Unreachable or PendingKill).
+    // In UE4, this logic is encapsulated by the standard IsValid() function.
+    if (IsValid(playerState))
+    {
+        // 1. A copy of the player's UniqueId (FUniqueNetIdRepl) is constructed on the stack.
+        //    (The assembly explicitly sets the vtable and increments the shared reference count).
+        // 2. The function accesses the _persistentData member (likely a UDBDPersistentData*).
+        // 3. It calls the GetPlayerPersistentData function, passing the ID by value (implied by the local copy construction).
+
+        return UDBDPersistentData::GetPlayerPersistentData(this->_persistentData, playerState->UniqueId);
+    }
+
+    // Return nullptr if the player state is invalid
+    return nullptr;
+}
+
+
+
+
+ADBDPlayerState* UDBDGameInstance::GetPrimaryPlayerState()
+{
+    // Call the base UGameInstance function to retrieve the Primary Player Controller
+    class APlayerController* PrimaryPlayerController = this->GetPrimaryPlayerController();
+
+    /**
+     * The disassembly performs an inlined validity check:
+     * 1. Checks if PrimaryPlayerController is not null.
+     * 2. Verifies the object exists in GUObjectArray.
+     * 3. Checks for EInternalObjectFlags::Unreachable and PendingKill flags.
+     * This is standard Unreal Engine safety encapsulated by IsValid().
+     */
+    if (IsValid(PrimaryPlayerController))
+    {
+        // Retrieve the PlayerState (offset 0x3a0 in AController) and safely cast it to ADBDPlayerState.
+        // The assembly uses a tail call to 'SafeCast', which is functionally equivalent to UE4's Cast<T>.
+        return Cast<class ADBDPlayerState>(PrimaryPlayerController->PlayerState);
+    }
+
+    return nullptr;
+}
+
+
+
+
+int32 UDBDGameInstance::GetRandomCamperIndex()
+{
+    // Retrieve the Design Tunables instance
+    class UDBDDesignTunables* Tunables = this->DesignTunables;
+
+    // Initialize a local array to store character descriptions.
+    // The disassembly shows manual stack allocation and initialization to 0, 
+    // which corresponds to the default constructor of TArray.
+    TArray<const class FCharacterDescription*> CharacterList;
+
+    /**
+     * Call GetCharactersByRole.
+     * Argument 2 (Role): 0x2 corresponds to VE_Camper (Survivor).
+     * Argument 3 (UnkBool): 0 (False).
+     */
+    UDBDDesignTunables::GetCharactersByRole(Tunables, CharacterList, 0x2 /* VE_Camper */, false);
+
+    int32 ArrayNum = CharacterList.Num();
+    int32 SelectedIndex = 0;
+
+    // If we have characters, pick a random one
+    if (ArrayNum > 0)
+    {
+        // The disassembly uses std::rand() explicitly with float normalization.
+        // Logic: Index = floor( (rand() / RAND_MAX) * ArrayNum )
+        // 0.000030518509f is equivalent to (1.0 / 32767.0).
+        int32 RandomVal = std::rand();
+        float NormalizedRandom = (float)RandomVal * 0.000030518509f;
+        int32 CalculatedIndex = (int32)(NormalizedRandom * (float)ArrayNum);
+
+        // Clamp logic seen in assembly: if (CalculatedIndex <= ArrayNum - 1) SelectedIndex = CalculatedIndex;
+        // This effectively ensures we don't go out of bounds if float precision acts up.
+        int32 MaxIndex = ArrayNum - 1;
+        if (CalculatedIndex <= MaxIndex)
+        {
+            SelectedIndex = CalculatedIndex;
+        }
+        else
+        {
+            SelectedIndex = MaxIndex;
+        }
+    }
+    else
+    {
+        // Fallback index is 0 if array is empty (Note: This risks a crash if Data is null, 
+        // implies DesignTunables is expected to always return valid data).
+        SelectedIndex = 0;
+    }
+
+    // Retrieve the pointer from the array
+    const class FCharacterDescription* SelectedCharDesc = CharacterList[SelectedIndex];
+
+    // Access the integer at Offset 0x8 from the struct.
+    // Assuming this field is the Character Index or ID.
+    // mov ebx, dword [rax+0x8]
+    int32 CharacterIndex = SelectedCharDesc->CharacterIndex;
+
+    // The TArray destructor will automatically be called here, invoking FMemory::Free on CharacterList.Data.
+    return CharacterIndex;
 }
