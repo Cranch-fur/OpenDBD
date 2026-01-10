@@ -1,0 +1,14 @@
+ADBDGame_Start::ADBDGame_Start
+ADBDGame_Start::AuthTicketReceived
+ADBDGame_Start::ConsumeDeferredError
+ADBDGame_Start::EACInitComplete
+ADBDGame_Start::GameInitComplete
+ADBDGame_Start::InitDBD
+ADBDGame_Start::InitPlayerProfile
+ADBDGame_Start::LoadPlayerCurrenciesFromMirrors
+ADBDGame_Start::OnInitTimeout
+ADBDGame_Start::OnPlayerCurrenciesLoadComplete
+ADBDGame_Start::OnPlayerProfileLoadComplete
+ADBDGame_Start::SendMirrorsAnalytics
+ADBDGame_Start::SetLoadProgress
+ADBDGame_Start::StartPlay
