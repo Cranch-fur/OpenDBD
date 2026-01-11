@@ -5553,3 +5553,684 @@ bool UDBDGameInstance::IsConnectedToNetwork()
     // Address: 140265d7b (Tail Call optimization in disassembly)
     return this->IsMainProfileSignedIn(true);
 }
+
+
+
+
+bool UDBDGameInstance::IsMainProfileSignedIn(bool validatePresencePlugin)
+{
+    // Logic extracted from 0x1402661c0 - 0x140266202
+    // Checks if the presence plugin needs validation and attempts to call a specific function on it.
+    if (validatePresencePlugin)
+    {
+        const FName PresenceModuleName = FName("OnlinePresence");
+
+        // Load the module checked. The disassembly casts the result immediately to a class pointer with a specific vtable.
+        // Note: The specific class type (likely IOnlinePresencePlugin) and the function at vtable offset 0xA0 are not standard.
+        // The code assumes the module implements a specific interface.
+        class IModuleInterface& PresenceModule = FModuleManager::LoadModuleChecked<class IModuleInterface>(PresenceModuleName);
+
+        /* UNDEFINED VTABLE */
+        // The disassembly calls the function at [VTable + 0xA0]. 
+        // We treat this as an undefined element as the exact function name is lost in compilation.
+        /* UNDEFINED ELEMENT */
+        bool bIsPresenceValid = ((bool(*)(class IModuleInterface*))(*(void***)&PresenceModule)[20])(&PresenceModule);
+
+        if (bIsPresenceValid == false)
+        {
+            return false;
+        }
+    }
+
+    // Logic extracted from 0x140266202 - 0x140266227
+    // Retrieve the Online Subsystem. 'SubsystemName' is initialized to NAME_None (memset 0).
+    const FName SubsystemName = NAME_None;
+    IOnlineSubsystem* OnlineSubsystem = IOnlineSubsystem::Get(SubsystemName);
+
+    // Retrieve the Identity Interface via VTable call [VTable + 0x70].
+    // UE4 signature: TSharedPtr<IOnlineIdentity, ESPMode::ThreadSafe> GetIdentityInterface() const;
+    TSharedPtr<IOnlineIdentity> IdentityInterface = OnlineSubsystem->GetIdentityInterface();
+
+    // Logic extracted from 0x140266227 onwards
+    // Check if the interface pointer is valid.
+    if (IdentityInterface.IsValid())
+    {
+        // 0x14026623a: Call [VTable + 0xD0]. This corresponds to GetLoginStatus(int32 LocalUserNum).
+        // Checks the status of the generic local user (0).
+        // 0x02 corresponds to ELoginStatus::LoggedIn.
+        const ELoginStatus::Type GenericLoginStatus = IdentityInterface->GetLoginStatus(0);
+
+        if (GenericLoginStatus == ELoginStatus::LoggedIn)
+        {
+            return true;
+        }
+
+        // Logic extracted from 0x14026624d
+        // If the generic check fails, we try to check the specific UniqueNetId of the LocalPlayer.
+        TSharedPtr<const FUniqueNetId> UniqueNetId = nullptr;
+        ULocalPlayer* LocalPlayer = this->GetLocalPlayer();
+
+        if (LocalPlayer != nullptr)
+        {
+            // 0x14026626a: GetCachedUniqueNetId returns a TSharedPtr<FUniqueNetId>.
+            UniqueNetId = LocalPlayer->GetCachedUniqueNetId();
+        }
+        else
+        {
+            // 0x1402662a5: If no LocalPlayer, call [VTable + 0xA8] on IdentityInterface.
+            // This corresponds to GetUniquePlayerId(int32 LocalUserNum).
+            UniqueNetId = IdentityInterface->GetUniquePlayerId(0);
+        }
+
+        // 0x1402662b3: Check if we successfully obtained a UniqueNetId.
+        if (UniqueNetId.IsValid())
+        {
+            // 0x1402662bd: Call [VTable + 0xC8]. This corresponds to GetLoginStatus(const FUniqueNetId& UserId).
+            const ELoginStatus::Type SpecificLoginStatus = IdentityInterface->GetLoginStatus(*UniqueNetId);
+
+            // 0x1402662cb: Compare the result with 0x02 (ELoginStatus::LoggedIn).
+            if (SpecificLoginStatus == ELoginStatus::LoggedIn)
+            {
+                return true;
+            }
+        }
+    }
+
+    // Default return if checks fail or interfaces are invalid.
+    return false;
+}
+
+
+
+
+bool UDBDGameInstance::IsSplashTransition(uint32 transitionId)
+{
+    // Logic extracted from 0x140266b00
+    // This function validates if a given transitionId is considered a "Splash Transition" 
+    // based on specific numeric ranges.
+
+    // 0x140266b00: Check if transitionId is explicitly 0x2B (43).
+    if (transitionId == 0x2B)
+    {
+        return false;
+    }
+
+    // 0x140266b05: Check the lower bound.
+    // The assembly uses 'jbe' (Jump if Below or Equal), so we return false if the ID is <= 0x28 (40).
+    if (transitionId <= 0x28)
+    {
+        return false;
+    }
+
+    // 0x140266b0a: Check the upper bound.
+    // The assembly uses 'jae' (Jump if Above or Equal), so we return false if the ID is >= 0x2F (47).
+    if (transitionId >= 0x2F)
+    {
+        return false;
+    }
+
+    // 0x140266b0f: If the ID falls within the valid range (41-46, excluding 43), return true.
+    return true;
+}
+
+
+
+
+bool UDBDGameInstance::JoinSession(ULocalPlayer* LocalPlayer, const FOnlineSessionSearchResult* SearchResult)
+{
+    // Retrieve the context system from the instance.
+    UGameFlowContextSystem* ContextSystem = this->_contextSystem;
+
+    // 0x140266c49: Validate the ContextSystem.
+    // The disassembly explicitly checks the Global Object Array (GUObjectArray) flags (specifically 0x20000000)
+    // to ensure the object is not pending kill or unreachable. In UE4 C++, this is encapsulated by IsValid().
+    if (IsValid(ContextSystem))
+    {
+        // 0x140266c6b: Retrieve the Online System Handler from the context.
+        UOnlineSystemHandler* OnlineSystemHandler = ContextSystem->m_OnlineSystemHandler;
+
+        // 0x140266c7a: Validate the OnlineSystemHandler using the same object flag check.
+        if (IsValid(OnlineSystemHandler))
+        {
+            // 0x140266ca1: Initialize the target session name.
+            // The disassembly points to data_143621a20 (likely "GameSession" or equivalent constant).
+            // We use standard NAME_GameSession here as a placeholder for the specific static name.
+            FName SessionName = NAME_GameSession;
+
+            // 0x140266cba: Initialize GameType value to -1 (0xffffffff).
+            int32 GameType = -1;
+
+            // 0x140266cc2: Create FName for "GAMETYPE".
+            const FName GameTypeKey = FName("GAMETYPE");
+
+            // 0x140266cd3: specific FOnlineSessionSettings::Get<int32> call.
+            // Retrieves the GAMETYPE setting from the SearchResult.
+            SearchResult->Session.SessionSettings.Get(GameTypeKey, GameType);
+
+            // 0x140266cd8: Check if the GameType is 2.
+            if (GameType == 2)
+            {
+                // 0x140266ce6: If GameType is 2, switch the session name.
+                // The disassembly points to data_143621a28 (likely "PartySession" or equivalent constant).
+                SessionName = NAME_PartySession;
+            }
+
+            // 0x140266cf1: Call JoinSession on the handler.
+            return OnlineSystemHandler->JoinSession(LocalPlayer, SessionName, SearchResult);
+        }
+    }
+
+    // 0x140266d0c: Return false if systems are invalid or join fails.
+    return false;
+}
+
+
+
+
+void UDBDGameInstance::MuteGameAudio(bool _shouldMute)
+{
+    // Logic extracted from 0x140268300
+    // 0x140268313: Call [VTable + 0x108] (GetWorld).
+    if (this->GetWorld() != nullptr)
+    {
+        // 0x14026832d: Call GetWorld() again to pass it to GetFirstLocalPlayerController.
+        class UWorld* World = this->GetWorld();
+
+        // 0x14026833d: Get the first local player controller.
+        class APlayerController* FirstLocalPlayerController = UEngine::GetFirstLocalPlayerController(GEngine, World);
+
+        // 0x140268345: Check if the controller is valid.
+        if (FirstLocalPlayerController != nullptr)
+        {
+            // 0x140268350 - 0x140268397: Construct the event name string.
+            // The disassembly manually resizes an array/string buffer and memcopies the wide string literal into it.
+            // This is equivalent to constructing an FString in C++.
+            FString EventName;
+
+            if (_shouldMute)
+            {
+                // 0x140268373: "AudioEvent_Master_Mute_ON"
+                EventName = TEXT("AudioEvent_Master_Mute_ON");
+            }
+            else
+            {
+                // 0x140268390: "AudioEvent_Master_Mute_OFF"
+                EventName = TEXT("AudioEvent_Master_Mute_OFF");
+            }
+
+            // 0x1402683a1: Get the AkAudioDevice singleton.
+            FAkAudioDevice* AudioDevice = FAkAudioDevice::Get();
+
+            // 0x1402683c2: Post the event to Wwise.
+            // Note: The disassembly passes the FString (or its internal array) pointer.
+            // FAkAudioDevice::PostEvent typically takes the EventName as a string and the actor.
+            if (AudioDevice != nullptr)
+            {
+                AudioDevice->PostEvent(EventName, FirstLocalPlayerController, 0, nullptr, nullptr);
+            }
+        }
+    }
+}
+
+
+
+
+void UDBDGameInstance::NotifyPlayerDisconnect(class ADBDPlayer* player)
+{
+    // Logic extracted from 0x1402683f0
+    // The disassembly shows the preparation of a parameter struct containing the 'player' argument,
+    // followed by a call to ProcessMulticastDelegate on the member variable at offset 0x2F8.
+    // This corresponds to broadcasting a dynamic multicast delegate named OnPlayerDisconnect.
+
+    this->OnPlayerDisconnect.Broadcast(player);
+}
+
+
+
+
+void UDBDGameInstance::OfferingSequenceDone()
+{
+    // Logic extracted from 0x140268410 - 0x140268456
+    // Debug logging block triggered if GameFlow verbosity is >= 5.
+    // Checks global GameFlow settings and logs the function call.
+    if (GameFlow.Verbosity >= 5)
+    {
+        UE_LOG(LogDBD, Log, TEXT("UDBDGameInstance::OfferingSequenceDone"));
+    }
+
+    // 0x140268456: Check if the simulation flow is active.
+    if (this->_simulationFlow != false)
+    {
+        return;
+    }
+
+    // 0x14026846b: Retrieve the OfferingHandler and process offerings.
+    UOfferingHandler* OfferingHandler = this->GetOfferingHandler();
+    UOfferingHandler::ProcessOfferings(OfferingHandler, &this->_resultEffects01);
+
+    // 0x14026848e: Retrieve the value for the 'KillerSelectionModifier' offering type (0x1F).
+    FName KillerName = NAME_None;
+    // 0x1F likely corresponds to EOfferingEffectType::KillerSelectionModifier or similar enum.
+    // -1 (0xFFFFFFFF) is passed as the 4th argument (likely an index or flag).
+    this->GetOfferingsValue(KillerName, 0x1F, -1);
+
+    // 0x140268498: Validate the retrieved name.
+    if (KillerName.IsNone())
+    {
+        return;
+    }
+
+    // 0x1402684a6: Convert the Killer Name to an Index using DesignTunables.
+    const int32 SlasherIndex = UDBDDesignTunables::GetCharacterIndexFromName(this->DesignTunables, KillerName);
+
+    // 0x1402684bb: Validate the Slasher Index.
+    if (SlasherIndex <= 0)
+    {
+        return;
+    }
+
+    // 0x1402684c6: Get the Local Player (Index 0).
+    ULocalPlayer* LocalPlayer = this->GetLocalPlayerByIndex(0);
+
+    // 0x1402684d1: Validate the Local Player.
+    if (IsValid(LocalPlayer))
+    {
+        // 0x140268508: Access the PlayerState via the Controller.
+        APlayerController* PlayerController = LocalPlayer->PlayerController;
+
+        if (PlayerController != nullptr)
+        {
+            // 0x14026851f - 0x14026853a: Cast to ADBDPlayerState.
+            // The disassembly performs manual class hierarchy checks (GetPrivateStaticClass).
+            ADBDPlayerState* DBDPlayerState = Cast<ADBDPlayerState>(PlayerController->PlayerState);
+
+            // 0x140268512: Check validity and Pending Kill flags.
+            if (IsValid(DBDPlayerState))
+            {
+                // 0x140268599: Create a copy of the UniqueNetId for the persistent data lookup.
+                FUniqueNetIdRepl PlayerId = DBDPlayerState->UniqueId;
+
+                // 0x1402685c5: Retrieve the Persistent Data for this player.
+                // The return type is inferred to be FPlayerPersistentData* or similar structure.
+                auto* PlayerData = UDBDPersistentData::GetPlayerPersistentData(this->_persistentData, PlayerId);
+
+                // 0x1402685d6: Validate the returned data.
+                if (PlayerData != nullptr)
+                {
+                    // 0x1402685db: Update the Selected Slasher Index in persistent data.
+                    PlayerData->SavedData.SharedData.SelectedSlasherIndex = SlasherIndex;
+
+                    // 0x1402685e8: Clear the SelectedCharacterCustomization array.
+                    // The disassembly explicitly checks ArrayMax and calls ResizeTo(0).
+                    PlayerData->SavedData.SharedData.SelectedCharacterCustomization.Empty();
+
+                    // 0x1402685ff: Update the PlayerState's Slasher Index.
+                    DBDPlayerState->SelectedSlasherIndex = SlasherIndex;
+
+                    // 0x140268605: Clean the loadout on the PlayerState.
+                    DBDPlayerState->CleanLoadout();
+                }
+            }
+        }
+    }
+}
+
+
+
+
+void UDBDGameInstance::OnAdditionalContentInstalled()
+{
+    // Logic extracted from 0x140268620
+    // Sets a boolean flag indicating that additional content has been installed.
+    // This is likely used to trigger UI updates or content refreshes elsewhere in the game loop.
+
+    this->_isAdditionalContentInstalled = true;
+}
+
+
+
+
+void UDBDGameInstance::OnCloudInventoryUpdated(TSharedRef<TArray<FPresenceItemDetails>> newInventory, IOnlinePresencePlugin::EDataStore dataStore, uint8 isMain)
+{
+    // Logic extracted from 0x140268cd0
+    // Retrieve the persistent data object.
+    UDBDPersistentData* PersistentData = this->_persistentData;
+
+    // 0x140268cf3: Validate PersistentData.
+    // The disassembly explicitly checks the GUObjectArray flags (specifically against PendingKill).
+    if (IsValid(PersistentData))
+    {
+        // 0x140268d26: Access the raw array from the SharedRef.
+        const TArray<FPresenceItemDetails>& SourceItems = newInventory.Get();
+
+        // 0x140268e1c: Clear the existing cloud inventory in Persistent Data.
+        // The disassembly sets ArrayNum to 0 before resizing, effectively emptying it.
+        PersistentData->_cloudInventory.Empty(SourceItems.Num());
+
+        // 0x140268d7c: Iterate through the source inventory.
+        // The disassembly constructs a temporary array first, then copies it to the persistent data, 
+        // but functionally it populates _cloudInventory with the new data.
+        for (const FPresenceItemDetails& SourceItem : SourceItems)
+        {
+            FCloudInventoryItem NewItem;
+
+            // 0x140268dbf: Memory copy of 16 bytes (xmmword).
+            // The code performs a raw copy from the source item (FPresenceItemDetails) to the destination (FCloudInventoryItem).
+            // This implies that both structures share a compatible memory layout (likely just an ID and a Quantity/Timestamp).
+            /* UNDEFINED ELEMENT - Raw Struct Copy */
+            FMemory::Memcpy(&NewItem, &SourceItem, sizeof(FCloudInventoryItem));
+
+            // Add the constructed item to the persistent storage.
+            PersistentData->_cloudInventory.Add(NewItem);
+        }
+    }
+
+    // 0x140268ea5: TSharedRef destructor logic.
+    // The disassembly at the end handles the decrement of the SharedReferenceCount for 'newInventory'.
+    // In C++, this is handled automatically when the TSharedRef goes out of scope.
+}
+
+
+
+
+void UDBDGameInstance::OnEnteringOnlineMultiplayer()
+{
+    // Logic extracted from 0x1402690e0
+    // 0x1402690e6: Check logging verbosity (GameFlow >= 6).
+    // Corresponds to VeryVerbose or similar custom log level.
+    if (GameFlow.Verbosity >= 6)
+    {
+        UE_LOG(LogDBD, Verbose, TEXT("^^^ OnEnteringOnlineMultiplayer ^^^"));
+    }
+
+    // 0x140269126: Check the internal ConnectionStatus.
+    // Comparing against 0x4. Based on context/pseudo-code, this likely represents 'NoNetworkConnection' or a Disconnected state.
+    // If we are in this state, we abort the operation.
+    if (this->_ConnectionStatus == EOnlineServerConnectionStatus::Type::NoNetworkConnection)
+    {
+        return;
+    }
+
+    // 0x140269135: Load the "OnlinePresence" module.
+    // The code manually loads the module checked.
+    const FName PresenceModuleName = FName("OnlinePresence");
+    class IModuleInterface& PresenceModule = FModuleManager::LoadModuleChecked<class IModuleInterface>(PresenceModuleName);
+
+    // 0x140269154: Call a specific validation function on the module interface.
+    // This calls the function at VTable offset 0xA0 (index 20 for 64-bit pointers).
+    /* UNDEFINED VTABLE */
+    /* UNDEFINED ELEMENT */
+    bool bIsPresenceValid = ((bool(*)(class IModuleInterface*))(*(void***)&PresenceModule)[20])(&PresenceModule);
+
+    // 0x14026915c: If the presence module validation passes, check if the main profile is signed in.
+    if (bIsPresenceValid)
+    {
+        // 0x140269163: Call IsMainProfileSignedIn with 'true' (validating presence plugin inside as well, seemingly redundant but present in assembly).
+        this->IsMainProfileSignedIn(true);
+    }
+}
+
+
+
+
+void UDBDGameInstance::OnGameRoundOver()
+{
+    // Logic extracted from 0x140269d00
+    UWorld* World = this->GetWorld();
+    if (World == nullptr)
+    {
+        return;
+    }
+
+    AGameState* GameState = World->GetGameState();
+
+    // 0x140269d00 - 0x140269de1: First pass over PlayerArray.
+    // Iterates through all PlayerStates and forces a network update (call to [VTable + 0x550]).
+    if (GameState != nullptr)
+    {
+        for (APlayerState* PlayerState : GameState->PlayerArray)
+        {
+            if (IsValid(PlayerState))
+            {
+                /* UNDEFINED VTABLE: 0x550 */
+                // Based on context (GameRoundOver), this is likely ForceNetUpdate() 
+                // to ensure the final state is replicated to clients immediately.
+                PlayerState->ForceNetUpdate();
+            }
+        }
+    }
+
+    // 0x140269df6: Iterate over all PlayerControllers.
+    for (FConstPlayerControllerIterator Iterator = World->GetPlayerControllerIterator(); Iterator; ++Iterator)
+    {
+        APlayerController* PlayerController = Iterator->Get();
+
+        // 0x140269e26: Validate Controller.
+        if (IsValid(PlayerController))
+        {
+            // 0x140269e32: Cast to ADBDPlayerControllerBase.
+            ADBDPlayerControllerBase* DBDController = Cast<ADBDPlayerControllerBase>(PlayerController);
+
+            if (DBDController != nullptr)
+            {
+                // 0x140269ea5: Notify client that the game has ended.
+                DBDController->Client_GameEnded();
+            }
+
+            // 0x140269eb0: Call [VTable + 0x550] (ForceNetUpdate) on the controller.
+            PlayerController->ForceNetUpdate();
+        }
+    }
+
+    // 0x140269ecf - 0x140269f8a: Second pass over PlayerArray.
+    // Iterates again, but checks a specific flag at offset 0x3AC bit 0x10.
+    if (GameState != nullptr)
+    {
+        for (APlayerState* PlayerState : GameState->PlayerArray)
+        {
+            if (IsValid(PlayerState))
+            {
+                // 0x140269f5d: Check specific byte property at 0x3AC (likely internal flags).
+                /* UNDEFINED ELEMENT */
+                // Logic: if ((PlayerState->InternalFlags & 0x10) != 0)
+                if (PlayerState->bIsInactive == false)
+                {
+                    // Call [VTable + 0x550] again.
+                    PlayerState->ForceNetUpdate();
+                }
+            }
+        }
+    }
+
+    // 0x140269f96: Check GameType.
+    // 0 likely corresponds to EGameType::None or Menu.
+    if (this->_persistentData->_gamePersistentData.SessionInfos.GameType == 0)
+    {
+        // 0x140269fa2: Handle return to menu via OnlineSystemHandler.
+        if (this->_contextSystem != nullptr)
+        {
+            UOnlineSystemHandler* OnlineSystemHandler = this->_contextSystem->m_OnlineSystemHandler;
+            if (OnlineSystemHandler != nullptr)
+            {
+                UOnlineSystemHandler::EndSessionOnReturnToMenu(OnlineSystemHandler);
+            }
+        }
+        return;
+    }
+
+    // 0x140269fe7: Server-side cleanup logic.
+    if (World->IsServer())
+    {
+        // 0x14026a000: Get the NetDriver.
+        UNetDriver* NetDriver = World->GetNetDriver();
+
+        if (NetDriver != nullptr)
+        {
+            // 0x14026a04a: Iterate over the NetworkObjectList.
+            // This loop iterates through all objects currently being replicated by the NetDriver.
+            // Using a standard range-based for loop as an abstraction for the raw TSet iteration in assembly.
+            for (const auto& NetworkObjectInfo : NetDriver->GetNetworkObjectList())
+            {
+                AActor* ReplicatedActor = NetworkObjectInfo->GetActor();
+
+                if (IsValid(ReplicatedActor))
+                {
+                    // 0x14026a179 - 0x14026a27e: Filter out core framework classes.
+                    // The assembly explicitly checks IsA(AController), IsA(APlayerState), IsA(AGameState).
+                    if (!ReplicatedActor->IsA(AController::StaticClass()) == false
+                     && !ReplicatedActor->IsA(APlayerState::StaticClass()) == false 
+                     && !ReplicatedActor->IsA(AGameState::StaticClass())) == false
+                    {
+                        // 0x14026a30d: Check RemoteRole.
+                        // Logic: if (RemoteRole == ROLE_SimulatedProxy || RemoteRole == ROLE_AutonomousProxy)
+                        if (ReplicatedActor->RemoteRole == ROLE_SimulatedProxy 
+                         || ReplicatedActor->RemoteRole == ROLE_AutonomousProxy)
+                        {
+                            // 0x14026a32a: Destroy the actor.
+                            // Arguments 1, 1 likely correspond to bNetForce=true, bShouldModifyLevel=true.
+                            ReplicatedActor->Destroy(true, true);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+
+
+void UDBDGameInstance::OnGameRoundStarted()
+{
+    // Logic extracted from 0x14026a370
+    // Reset flags indicating the state of the match termination.
+    this->HasServerLeftMatch = false;
+    this->HasWrittenGameEndStats = false;
+
+    // 0x14026a380: Access the Context System.
+    UGameFlowContextSystem* ContextSystem = this->_contextSystem;
+
+    // Validate Context System and Online System Handler to reset connection status.
+    if (IsValid(ContextSystem))
+    {
+        UOnlineSystemHandler* OnlineSystemHandler = ContextSystem->m_OnlineSystemHandler;
+
+        if (IsValid(OnlineSystemHandler))
+        {
+            // 0x14026a401: Reset the 'bHasLostServerConnection' flag.
+            // Based on offset 0x600 in the disassembly.
+            /* UNDEFINED ELEMENT */
+            OnlineSystemHandler->_connectionStatus.bHasLostServerConnection = false;
+        }
+    }
+
+    // 0x14026a40d: Get the local player (index 0).
+    ULocalPlayer* LocalPlayer = this->GetLocalPlayerByIndex(0);
+
+    if (IsValid(LocalPlayer))
+    {
+        // 0x14026a44c: Access PlayerController and cast to ADBDPlayerController.
+        APlayerController* PlayerController = LocalPlayer->PlayerController;
+        ADBDPlayerController* DBDController = Cast<ADBDPlayerController>(PlayerController);
+
+        if (IsValid(DBDController))
+        {
+            // 0x14026a4e3: Notify the controller that the round has started.
+            DBDController->OnGameRoundStarted();
+
+            // 0x14026a552: Retrieve the specialized PlayerState.
+            ADBDPlayerState* DBDPlayerState = ADBDPlayerControllerBase::GetDBDPlayerState(DBDController);
+
+            if (IsValid(DBDPlayerState))
+            {
+                // Prepare an array to hold analytics attributes.
+                TArray<FAnalyticsEventAttribute> AnalyticsAttributes;
+
+                // 0x14026a55f: Populate initial analytics data from PlayerState.
+                ADBDPlayerState::AddDataForAnalytics(DBDPlayerState, &AnalyticsAttributes);
+
+                // 0x14026a612: Retrieve Persistent Data for this player.
+                // Disassembly creates a temporary copy of the UniqueId struct to pass to the function.
+                FUniqueNetIdRepl PlayerId = DBDPlayerState->UniqueId;
+                FPlayerPersistentData* PlayerData = UDBDPersistentData::GetPlayerPersistentData(this->_persistentData, PlayerId);
+
+                if (PlayerData != nullptr)
+                {
+                    // 0x14026a971: Serialize persistent data into the attributes array.
+                    FPlayerPersistentData::SerializeDataForAnalytics(PlayerData, &AnalyticsAttributes);
+
+                    // 0x14026a753: Check GameRole (Offset 0x750).
+                    // VE_Slasher (1) logic.
+                    if (DBDPlayerState->GameRole == VE_Slasher)
+                    {
+                        // 0x14026a7c0: Record "KillerInfo" as Client Progress.
+                        UDBDAnalytics::RecordClientProgress(TEXT("KillerInfo"), AnalyticsAttributes);
+                        // 0x14026a813: Record "KillerInfo" as Game Progress.
+                        UDBDAnalytics::RecordGameProgress(TEXT("KillerInfo"), AnalyticsAttributes);
+                    }
+                    // VE_Camper (2) logic.
+                    else if (DBDPlayerState->GameRole == VE_Camper)
+                    {
+                        // 0x14026a8cc: Record "SurvivorInfo" as Game Progress.
+                        UDBDAnalytics::RecordGameProgress(TEXT("SurvivorInfo"), AnalyticsAttributes);
+                    }
+
+                    // 0x14026a976: Loadout Analytics Logic.
+                    // The check 'dec al; cmp al, 1; ja' effectively checks if Role is 1 (Slasher) or 2 (Camper).
+                    if (DBDPlayerState->GameRole == VE_Slasher || DBDPlayerState->GameRole == VE_Camper)
+                    {
+                        ADBDGameState* GameState = this->GetGameState();
+                        if (GameState != nullptr)
+                        {
+                            FString SessionId = GameState->_sessionId.ToString();
+
+                            // 0x14026a9ac: Construct and send LoadOut analytics.
+                            /* UNDEFINED ELEMENT: Custom Analytics Struct */
+                            FLoadOutAnalytics LoadoutAnalytics(PlayerData, SessionId);
+                            UBHVRAnalytics::AddTableRow(LoadoutAnalytics);
+                        }
+                    }
+                }
+
+                // 0x14026a9d2: Procedural Level Generation Telemetry.
+                if (this->Builder.IsValid())
+                {
+                    AProceduralLevelBuilder::AddGenerationDataToTelemetry(this->Builder.Get(), AnalyticsAttributes);
+                }
+
+                // 0x14026aa46: Record "StartGame" event.
+                UDBDAnalytics::RecordClientProgress(TEXT("StartGame"), AnalyticsAttributes);
+
+                // 0x14026aa69: Additional Analytics based on GameType.
+                // 0x1 usually corresponds to EGameType::KillYourFriends or PartyMode.
+                // If NOT PartyMode/KYF, send wait time and match info.
+                if (this->_persistentData->_gamePersistentData.SessionInfos.GameType != 1)
+                {
+                    ADBDGameState* GameState = this->GetGameState();
+                    if (GameState != nullptr)
+                    {
+                        FString SessionId = GameState->_sessionId.ToString();
+
+                        // 0x14026aa97: Send Wait Time Analytics.
+                        FWaitTimeAnalyticsController::SendWaitTimeAnalytics(
+                            &this->_analyticsManager.WaitTimeAnalytics,
+                            SessionId
+                        );
+
+                        // 0x14026aadd: Send Match Info Analytics.
+                        FMatchInfoAnalyticsController::SendAnalytics(
+                            &this->_analyticsManager.MatchInfoAnalytics,
+                            DBDPlayerState,
+                            this->DesignTunables,
+                            SessionId
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    // 0x14026ab4c: Clear the player status cache.
+    // Clears the sparse array/map used for caching player status.
+    this->_cachePlayerStatus.Empty();
+}
