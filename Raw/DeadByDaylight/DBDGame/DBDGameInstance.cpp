@@ -3946,7 +3946,7 @@ ULightingHelper* UDBDGameInstance::GetLightingHelper()
 {
     // The disassembly performs a manual check against GUObjectArray and internal object flags 
     // to verify if the object is reachable. In standard UE4 C++, this is encapsulated by IsValid().
-    if (this->_ligthingHelper == nullptr || !IsValid(this->_ligthingHelper))
+    if (this->_ligthingHelper == nullptr || IsValid(this->_ligthingHelper) == false)
     {
         // Define the name for the new object
         FName InName = FName("LightingHelper");
@@ -4850,4 +4850,706 @@ int32 UDBDGameInstance::GetRandomCamperIndex()
 
     // The TArray destructor will automatically be called here, invoking FMemory::Free on CharacterList.Data.
     return CharacterIndex;
+}
+
+
+
+
+int32 UDBDGameInstance::GetRandomSlasherIndex()
+{
+    // Retrieve the DesignTunables instance stored in this GameInstance (Offset 0xF0)
+    class UDBDDesignTunables* DesignTunables = this->DesignTunables;
+
+    // Prepare an array to hold the character descriptions. 
+    // In the disassembly, this is allocated on the stack [rsp+0x20] and zeroed out.
+    // TArray destructor will handle the FMemory::Free call seen at the end of the disassembly.
+    TArray<const class FCharacterDescription*> ReturnArray;
+
+    /**
+     * Call UDBDDesignTunables::GetCharactersByRole to populate the array.
+     * Arguments based on registers:
+     * RCX (Arg1): DesignTunables instance.
+     * RDX (Arg2): Address of ReturnArray.
+     * R8  (Arg3): 0x1. This corresponds to the Role. In this context, 0x1 is VE_Slasher.
+     * R9  (Arg4): 0x0. Boolean flag (False).
+     */
+    UDBDDesignTunables::GetCharactersByRole(DesignTunables, ReturnArray, 0x1 /* VE_Slasher */, false);
+
+    // Get the number of elements in the array
+    int32 ArrayNum = ReturnArray.Num();
+
+    // This variable will hold the final calculated index (rcx/v4 in disassembly)
+    int32 TargetIndex = 0;
+
+    // Verify if the array is not empty
+    if (ArrayNum <= 0)
+    {
+        // If the array is empty, default to index 0
+        TargetIndex = 0;
+    }
+    else
+    {
+        // Generate a random integer using the standard C library rand()
+        // 0x14025ded7: call qword [rel rand]
+        int32 RandomVal = std::rand();
+
+        // Prepare the upper bound for the index (ArrayNum - 1)
+        int32 MaxIndex = ArrayNum - 1;
+
+        // Perform floating point normalization.
+        // The constant 3.05185094e-05f found in assembly (0x38000100) is equivalent to (1.0 / 32767.0).
+        // This normalizes the random value to a 0.0 - 1.0 range.
+        float NormalizedRandom = (float)RandomVal * 0.000030518509f;
+
+        // Scale the normalized float by the ArrayNum and truncate to int32
+        // 0x14025defa: cvttss2si eax, xmm2
+        int32 CalculatedIndex = (int32)(NormalizedRandom * (float)ArrayNum);
+
+        // Bounds checking logic
+        // 0x14025defe: cmp eax, ecx (CalculatedIndex, MaxIndex)
+        // 0x14025df00: cmovle ecx, eax
+        if (CalculatedIndex <= MaxIndex)
+        {
+            TargetIndex = CalculatedIndex;
+        }
+        else
+        {
+            TargetIndex = MaxIndex;
+        }
+    }
+
+    // Retrieve the pointer to the character description from the array data
+    // 0x14025df0f: mov rax, qword [rcx+rax*8]
+    const class FCharacterDescription* SelectedCharacter = ReturnArray[TargetIndex];
+
+    // Access the integer at offset 0x8 of the FCharacterDescription structure.
+    // Based on the similar function provided, this is the CharacterIndex.
+    // 0x14025df13: mov ebx, dword [rax+0x8]
+    int32 CharacterIndex = SelectedCharacter->CharacterIndex;
+
+    // The logic at 0x14025df1b (FMemory::Free) is automatically handled by the TArray destructor
+    // when ReturnArray goes out of scope here.
+
+    return CharacterIndex;
+}
+
+
+
+
+URootMovie* UDBDGameInstance::GetRootMovie()
+{
+    // Retrieve the GameFlowContextSystem pointer from the current instance.
+    // Based on disassembly offset 0x3b0.
+    UGameFlowContextSystem* ContextSystem = this->_contextSystem;
+
+    // Verify if the ContextSystem is valid before accessing its members.
+    if (ContextSystem == nullptr)
+    {
+        return nullptr;
+    }
+
+    // Return the RootMovie member from the ContextSystem.
+    // Based on disassembly offset 0x88.
+    return ContextSystem->m_RootMovie;
+}
+
+
+
+
+USequencer* UDBDGameInstance::GetSacrificeSequencer()
+{
+    // Check if the pointer exists.
+    // If it exists, we must also check the global object array flags to ensure the object is not marked as Unreachable (Bit 29 in UE4.13).
+    // The IsValid() function covers these checks (Null, PendingKill, Unreachable).
+    if (this->_sacrificeSequencer == nullptr || IsValid(this->_sacrificeSequencer) == false)
+    {
+        // Prepare the name for the new object.
+        FName SequencerName = FName(TEXT("SacrificeSequencer"));
+
+        // Validation check for the name.
+        // This logic is internally part of the object creation process in Debug builds to prevent bad constructor usage.
+        if (SequencerName == NAME_None)
+        {
+            FObjectInitializer::AssertIfInConstructor(this, TEXT("NewObject with empty name can't be used to create default subobjects (inside of UObject derived class constructor) as it produces inconsistent object names. Use ObjectInitializer.CreateDefaultSuobject<> instead."));
+        }
+
+        // Create the new USequencer object.
+        // The disassembly calls StaticConstructObject_Internal directly, which is the internal implementation wrapped by NewObject.
+        // Parameters: Class, Outer (this), Name, Flags (RF_NoFlags).
+        this->_sacrificeSequencer = NewObject<USequencer>(this, USequencer::StaticClass(), SequencerName, RF_NoFlags);
+    }
+
+    return this->_sacrificeSequencer;
+}
+
+
+
+
+UScreenController* UDBDGameInstance::GetScreenController()
+{
+    // Retrieve the ContextSystem from the current instance.
+    // Based on disassembly offset 0x3b0.
+    UGameFlowContextSystem* ContextSystem = this->_contextSystem;
+
+    // Verify if ContextSystem is valid before proceeding.
+    if (ContextSystem == nullptr)
+    {
+        return nullptr;
+    }
+
+    // Retrieve the RootMovie from the ContextSystem.
+    // Based on disassembly offset 0x88.
+    URootMovie* RootMovie = ContextSystem->m_RootMovie;
+
+    // Verify if RootMovie is valid before accessing the controller.
+    if (RootMovie == nullptr)
+    {
+        return nullptr;
+    }
+
+    // Return the ScreenController member from the RootMovie.
+    // Based on disassembly offset 0x90.
+    return RootMovie->m_ScreenController;
+}
+
+
+
+
+void UDBDGameInstance::HandleDisconnectError()
+{
+    // Check if there is an active disconnect error.
+    // DisconnectError is an enum, 0 implies None.
+    if (this->DisconnectError == EDisconnectError::None)
+    {
+        return;
+    }
+
+    // Switch based on the specific error code.
+    // The jump table in disassembly subtracts 1 from the error value, implying 1-based indices for these errors.
+    switch (this->DisconnectError)
+    {
+        case EDisconnectError::SteamAuthFailure: // Value 1
+        {
+            this->ShowSystemPrompt(0x5D); // 93
+            break;
+        }
+        case EDisconnectError::SteamAuthFailureKickedFromServer: // Value 2
+        {
+            this->ShowSystemPrompt(0x5E); // 94
+            break;
+        }
+        case EDisconnectError::EACServerValidationFailure: // Value 3
+        {
+            this->ShowSystemPrompt(0x5F); // 95
+            break;
+        }
+        case EDisconnectError::EACValidationFailureKickedFromServer: // Value 4
+        {
+            this->ShowSystemPrompt(0x60); // 96
+            break;
+        }
+        case EDisconnectError::EACClientNotRunning: // Value 5
+        {
+            this->ShowSystemPrompt(0x5B); // 91
+            break;
+        }
+        case EDisconnectError::EACClientIntegrityViolation: // Value 6
+        {
+            this->ShowSystemPrompt(0x5A); // 90
+            break;
+        }
+        case EDisconnectError::PlayerRemovedOnSuspend: // Value 7
+        {
+            this->ShowSystemPrompt(0x6F); // 111
+            break;
+        }
+        case EDisconnectError::LostConnectionToProfileService: // Value 9
+        {
+            // This case involves a callback delegate.
+            // It first checks if the main profile is currently NOT signed in.
+            bool bIsSignedOut = !this->IsMainProfileSignedIn(true);
+
+            // Bind a lambda to an FSimpleDelegate.
+            // The disassembly shows the construction of a TBaseFunctorDelegateInstance (Lambda).
+            // The lambda captures 'this' and the 'bIsSignedOut' boolean result.
+            // The actual body of the lambda corresponds to the function address _lambda_... which is separate from this disassembly block.
+            FSimpleDelegate OnClosedDelegate;
+            OnClosedDelegate.BindLambda([this, bIsSignedOut]()
+                {
+                    /* UNDEFINED ELEMENT: Lambda Body Logic Hidden in Disassembly (likely separate function address) */
+                });
+
+            this->ShowSystemPromptWithCallback(0x7D, OnClosedDelegate); // 125
+            break;
+        }
+        case EDisconnectError::MirrorsUnscheduledSessionDestruction: // Value 10
+        {
+            this->ShowSystemPrompt(0x77); // 119
+            break;
+        }
+        case EDisconnectError::SessionKilledByMirrors: // Value 11
+        {
+            this->ShowSystemPrompt(0x85); // 133
+            break;
+        }
+        default:
+        {
+            // Default case handles errors that do not require a specific prompt or fall through.
+            break;
+        }
+    }
+
+    // Reset the error state to None after handling.
+    this->DisconnectError = EDisconnectError::None;
+}
+
+
+
+
+bool UDBDGameInstance::HasDetectedNetworkConnectionFailure()
+{
+    // Return the value of the _networkFailureDetected member variable.
+    // Based on disassembly offset 0x608.
+    return this->_networkFailureDetected;
+}
+
+
+
+
+bool UDBDGameInstance::HasOfferingOfType(EOfferingEffectType type)
+{
+    // The logic below corresponds to the internal implementation of TMap::Contains.
+    // The disassembly manually calculates the hash for the 'type' key, retrieves the bucket,
+    // and traverses the element chain to check for existence.
+    // Member: _resultEffects01 (Likely TMap<EOfferingEffectType, FNonTrivialStruct>) based on element size 0x60.
+    return this->_resultEffects01.Contains(type);
+}
+
+
+
+
+bool UDBDGameInstance::HasOfferingOfType(EOfferingEffectType type, int32_t playerId)
+{
+    // Perform a lookup in the outer map using the Offering Type.
+    // _resultEffects01 appears to be TMap<EOfferingEffectType, TMap<int32, FNonTrivialStruct>>.
+    // The Find() method returns a pointer to the Value (the inner map) if the Key exists, or nullptr otherwise.
+    const TMap<EOfferingEffectType, TMap<int32, FNonTrivialStruct>>* PlayerEffectsMap = this->_resultEffects01.Find(type);
+
+    // If the offering type exists in the map...
+    if (PlayerEffectsMap != nullptr)
+    {
+        // ...check if the specific playerId exists within the inner container.
+        // The disassembly checks the Key (offset 0 of the inner element) against the playerId.
+        return PlayerEffectsMap->Contains(playerId);
+    }
+
+    return false;
+}
+
+
+
+
+void UDBDGameInstance::Init()
+{
+    // Call parent class Init (UGameInstance).
+    Super::Init();
+
+    // Bind the BeginLoadingScreen function to the PreLoadMap delegate.
+    FCoreUObjectDelegates::PreLoadMap.AddUObject(this, &UDBDGameInstance::BeginLoadingScreen);
+
+    // Bind a function to PostLoadMap. 
+    // Note: The disassembly explicitly references 'AddStructReferencedObjectsOrNot<FA2CSPose>' here.
+    // In a standard GameInstance, this slot is often used for EndLoadingScreen, but we strictly follow the disassembly symbols.
+    FCoreUObjectDelegates::PostLoadMap.AddUObject(this, &UDBDGameInstance::AddStructReferencedObjectsOrNot<FA2CSPose>);
+
+    // Load the "OnlinePresence" module (interfaces via FAdvertising based on disassembly symbols).
+    FAdvertising& AdvertisingModule = FModuleManager::LoadModuleChecked<FAdvertising>(TEXT("OnlinePresence"));
+
+    // Call a virtual function at offset 0x50 on the loaded module.
+    // 0x50 = 80 decimal, which is index 10 in a 8-byte pointer vtable.
+    /* UNDEFINED VTABLE: Calling virtual function at index 10 */
+    (*reinterpret_cast<void(**)(FAdvertising*)>(AdvertisingModule.vtable)[10])(&AdvertisingModule);
+
+    this->StartGameEventSystem();
+
+    // Lazy initialization of the SoundEventSystem.
+    if (this->_soundEventSystem == nullptr)
+    {
+        this->_soundEventSystem = new SoundEventSystem();
+    }
+
+    // Initialize various subsystems.
+    this->StartPersistenData();
+    this->StartPlayerDataFacade();
+    this->StartDesignTunables();
+    this->StartRegionFinder();
+    this->StartKeyDisplayInfo();
+
+    // Call a function from an anonymous namespace (likely a static helper in the cpp file).
+    CreateDumpThread();
+
+    this->CreateEACInterface();
+    this->InitializeInteractionProficiencies();
+
+    // Create transient objects. 
+    // The disassembly passes GetTransientPackage() as the Outer to StaticConstructObject.
+    this->_theHud = NewObject<UDBDHud>(GetTransientPackage());
+
+    if (this->RegionFinder != nullptr)
+    {
+        this->RegionFinder->PingRegions();
+    }
+
+    this->PlayerProfileDAL = NewObject<UPlayerProfileDAL>(GetTransientPackage());
+    this->_mapActorDB = NewObject<UMapActorDB>(GetTransientPackage());
+
+    // World Context initialization logic.
+    // Check if the WorldType is PIE (Play In Editor, Value 3).
+    if (this->WorldContext != nullptr && this->WorldContext->WorldType == EWorldType::PIE)
+    {
+        this->InitAnalogCursor();
+        this->StartContextSystem();
+
+        UBloodwebManager* BloodWeb = this->GetBloodWebManager();
+        if (BloodWeb != nullptr)
+        {
+            BloodWeb->Init(this, this->DesignTunables);
+        }
+    }
+    else
+    {
+        // If not PIE, apply game user settings.
+        if (GEngine != nullptr)
+        {
+            UDBDGameUserSettings* GameUserSettings = Cast<UDBDGameUserSettings>(GEngine->GetGameUserSettings());
+            if (GameUserSettings != nullptr)
+            {
+                GameUserSettings->ApplyOptions();
+            }
+        }
+    }
+
+    // Bind delegates for OnlinePresence events.
+    // The module is retrieved again here in disassembly.
+    FAdvertising& PresenceModule = FModuleManager::LoadModuleChecked<FAdvertising>(TEXT("OnlinePresence"));
+    PresenceModule.InventoryUpdatedEvent.AddUObject(this, &UDBDGameInstance::OnCloudInventoryUpdated);
+    PresenceModule.UpdatePluginStateEvent.AddUObject(this, &UDBDGameInstance::OnUpdatePluginStateEvent);
+
+    // Expand the PlayerIds array by 5 zero-initialized elements.
+    this->PlayerIds.AddZeroed(5);
+
+    // Log the DBD Version Number if verbosity allows.
+    // 'GameFlow' appears to be a global logging category structure.
+    if (GameFlow.Verbosity >= 5)
+    {
+        // The disassembly manually constructs the log call, extracting the category name.
+        UE_LOG(GameFlow, Log, TEXT("DBD Version Number: %s"), *GetDBDVersionNumber());
+    }
+}
+
+
+
+
+void UDBDGameInstance::InitAnalogCursor()
+{
+    // Check command line parameter to see if Analog Cursor should be disabled.
+    // Argument: -NoAnalogCursor
+    if (FParse::Param(FCommandLine::Get(), TEXT("NoAnalogCursor")))
+    {
+        return;
+    }
+
+    // Instantiate the FDBDAnalogCursor.
+    // The disassembly shows two allocations: one for the object (0xB0 bytes) and one for the reference controller (0x18 bytes).
+    // This indicates the use of MakeShareable (wrapping a new raw pointer) rather than MakeShared (single allocation).
+    // FDBDAnalogCursor likely inherits from TSharedFromThis, as indicated by the call to EnableSharedFromThis.
+    this->AnalogCursor = MakeShareable(new FDBDAnalogCursor());
+
+    // Configure the cursor if instantiation succeeded.
+    if (this->AnalogCursor.IsValid())
+    {
+        // Set the mode to 1. 
+        // Based on context and standard analog cursor implementations, 1 likely represents 'Direct' or 'Analog' mode.
+        this->AnalogCursor->SetMode((FAnalogCursor::EMode)1);
+
+        // Set the dead zone to 0.3.
+        this->AnalogCursor->SetDeadZone(0.3f);
+
+        // Pass the current GameInstance to the cursor.
+        this->AnalogCursor->SetGameInstance(this);
+
+        // Perform initial update.
+        this->AnalogCursor->UpdateCursor();
+    }
+}
+
+
+
+
+void UDBDGameInstance::InitProceduralGenerationData()
+{
+    // Initialize the path string.
+    // Address: 140264eb6 (String Conversion)
+    // The string literal is: "ProceduralGenerationData'/Game/ProceduralLevelGeneration/ProceduralGenerationData.ProceduralGenerationData'"
+    FString Path = TEXT("ProceduralGenerationData'/Game/ProceduralLevelGeneration/ProceduralGenerationData.ProceduralGenerationData'");
+
+    // Create the Asset Reference (UE 4.13 uses FStringAssetReference).
+    // Address: 140264edb (FStringAssetReference::SetPath)
+    FStringAssetReference TargetToStream;
+    TargetToStream.SetPath(Path);
+
+    // Prepare the callback lambda for the async load.
+    // Address: 140264f47 (operator new for lambda capture)
+    // The code captures 'TargetToStream' (Path_2 in disassembly) by value into the lambda.
+    // Address: 140264f7a (Callback assignment)
+    // The actual body of the lambda is located at the function pointer passed to the TFunction 
+    // (symbol: UE4Function_Private::TFunctionRefCaller...::Call), which is not fully detailed in the snippet.
+    TFunction<void()> Callback = [TargetToStream]()
+        {
+            /* UNDEFINED ELEMENT - The body of this lambda is external to the provided disassembly snippet. */
+            /* Typically, this would involve casting the loaded object and assigning it to a member variable. */
+        };
+
+    // Request the Async Load using the StreamableManager.
+    // Address: 140264f86 (FStreamableManager::RequestAsyncLoad)
+    // Argument 0xFFFFFFFF indicates the priority (MAX_uint32), effectively standard/high priority.
+    this->AssetLoader.RequestAsyncLoad(TargetToStream, Callback);
+}
+
+
+
+
+void UDBDGameInstance::InitSaveValidation(FPlayerSavedProfileData* checkData)
+{
+    // Create a temporary validation data object from the provided profile data.
+    // Address: 140265027
+    FSaveValidationData TempValidationData(checkData);
+
+    // Update the local member variable.
+    // The disassembly shows explicit Move Semantics for the PlayerUID (pointer stealing)
+    // and an operator= call for the CharacterData (TSet/TMap). 
+    // This is effectively a move assignment.
+    // Address: 14026503b - 14026506b
+    this->_localSaveValidationData = MoveTemp(TempValidationData);
+
+    // Log the initialization if the Verbosity level is high enough (Verbose = 5).
+    // Address: 140265089 (cmp byte [rel GameFlow], 0x5)
+    if (UE_LOG_ACTIVE(GameFlow, Verbose))
+    {
+        // Handle potential empty string for the log. 
+        // Address: 140265092
+        const TCHAR* UIDString = TEXT("");
+        if (this->_localSaveValidationData.PlayerUID.Len() > 0)
+        {
+            UIDString = *this->_localSaveValidationData.PlayerUID;
+        }
+
+        // Address: 1402650d8
+        UE_LOG(GameFlow, Verbose, TEXT("Save validation data initialized. UID: %s"), UIDString);
+    }
+
+    // The destructor for TempValidationData is called here as it goes out of scope.
+    // Address: 140265075 (TMap/Set cleanup), 14026507a (String cleanup)
+}
+
+
+
+
+void UDBDGameInstance::InitializeFence(ANetworkFenceActor* fence)
+{
+    // Check if the fence is currently null.
+    // Address: 14026546e (operator== called with nullptr)
+    // The disassembly checks if the existing weak pointer is equal to null (0).
+    if (this->_localFence == nullptr)
+    {
+        // Assign the provided fence actor to the local weak pointer.
+        // Address: 140265481 (FWeakObjectPtr::operator=)
+        this->_localFence = fence;
+
+        // Broadcast that the fence has been initialized.
+        // Address: 14026548d (Delegate Broadcast)
+        this->OnFenceInitialized.Broadcast();
+    }
+}
+
+
+
+
+void UDBDGameInstance::InitializeInteractionProficiencies()
+{
+    // Reset the interaction proficiencies array.
+    // Address: 1402654da
+    this->_interactionProficiencies.Empty();
+
+    // Check if DesignTunables is valid.
+    // Address: 1402654f5
+    if (this->DesignTunables == nullptr)
+    {
+        return;
+    }
+
+    // Retrieve the Interaction Proficiencies DataTable from DesignTunables.
+    // The disassembly performs a TMap/TSet lookup on _databases using a string key.
+    // Address: 14026553e (FindId)
+    // The specific key string is not visible in the snippet (data_143585718), 
+    // but context implies "InteractionProficienciesDB".
+    static const FString DBKey = TEXT("InteractionProficienciesDB");
+
+    // Note: This assumes _databases is a TMap<FString, UDataTable*> or similar structure accessible here.
+    UDataTable* ProficiencyTable = nullptr;
+    auto* FoundEntry = this->DesignTunables->_databases.Find(DBKey);
+
+    // Address: 14026558b
+    if (FoundEntry != nullptr)
+    {
+        ProficiencyTable = *FoundEntry; // Assuming the map value is the UDataTable*
+    }
+
+    if (ProficiencyTable == nullptr)
+    {
+        return;
+    }
+
+    // Retrieve all rows from the DataTable.
+    // Address: 14026560d (UDataTable::GetAllRows)
+    TArray<FInteractionProficiencyProperties*> OutRowArray;
+    ProficiencyTable->GetAllRows<FInteractionProficiencyProperties>(TEXT("<UDBDGameInstance::InitializeInteractionProficiencies>"), OutRowArray);
+
+    // Iterate through the properties.
+    // Loop starts at 140265632
+    for (FInteractionProficiencyProperties* Row : OutRowArray)
+    {
+        if (Row == nullptr)
+        {
+            continue;
+        }
+
+        // Logic to validate the Soft Object Pointer (FStringAssetReference) before loading.
+        // The disassembly (14026564c - 14026572b) manually manipulates the internal 
+        // WeakObjectPtr and tag of the asset reference to check if it resolves.
+        // It explicitly skips the item if the object is not currently valid/resolvable in memory.
+
+        // Address: 1402656cd (ResolveObject)
+        if (Row->ProficiencyBlueprint.ResolveObject() == nullptr)
+        {
+            // Address: 14026572b (Jump if bl == 0)
+            continue;
+        }
+
+        // Prepare a temporary Asset Reference for loading.
+        // Address: 140265731
+        FStringAssetReference TargetAsset = Row->ProficiencyBlueprint;
+
+        // Synchronously load/retrieve the object. 
+        // Since we checked ResolveObject above, this ensures we get the UObject* safely.
+        // Address: 14026578b (FStreamableManager::SynchronousLoad)
+        UObject* LoadedObject = this->AssetLoader.SynchronousLoad(TargetAsset);
+
+        // Check if the loaded object is a Class.
+        // Address: 1402657e3 (UClass::GetPrivateStaticClass checks)
+        UClass* ProficiencyClass = Cast<UClass>(LoadedObject);
+
+        if (ProficiencyClass != nullptr)
+        {
+            // Instantiate the Interaction Proficiency object.
+            // Address: 140265841 (StaticConstructObject_Internal / NewObject)
+            UInteractionProficiency* NewProficiency = NewObject<UInteractionProficiency>(this, ProficiencyClass);
+
+            if (NewProficiency != nullptr)
+            {
+                // Initialize the new object with the row properties.
+                // Address: 140265881
+                NewProficiency->SetProperties(Row);
+
+                // Add to the GameInstance's array.
+                // Address: 14026589c
+                this->_interactionProficiencies.Add(NewProficiency);
+            }
+        }
+    }
+}
+
+
+
+
+bool UDBDGameInstance::IsActorKnown(ADBDPlayer* knowledgePossessor, AActor* possiblyKnownActor)
+{
+    // Validate the knowledge possessor.
+    // Address: 140265a8a (Null check), 140265a93 (Internal flags check)
+    if (IsValid(knowledgePossessor) == false)
+    {
+        return false;
+    }
+
+    // Additional flag check present in disassembly (Offset 0x140, bit 0x4).
+    // This often corresponds to specific actor states like being destroyed or disconnected.
+    // Address: 140265ac4
+    /* UNDEFINED ELEMENT: if (knowledgePossessor->InternalFlags & 4) return false; */
+
+    // Retrieve the Perk Manager.
+    // Address: 140265b04
+    // Accesses the manager via the interface pointer located at offset 0x7a8.
+    UPerkManager* PerkManager = knowledgePossessor->GetPerkManager();
+    if (IsValid(PerkManager) == false)
+    {
+        return false;
+    }
+
+    // Check for Aura Reading Disruption.
+    // Address: 140265b69 (HasPerkFlag)
+    // 0x2C (44) = VE_DisruptAuraReading
+    // 0x04 (4)  = Context/VE_All
+    if (PerkManager->HasPerkFlag(EGameplayModifierFlag::VE_DisruptAuraReading, EGameplayModifierSource::VE_All))
+    {
+        return false;
+    }
+
+    // Iterate through all Actor Knowledge Collections.
+    // Address: 140265b76
+    for (UActorKnowledgeCollection* Collection : this->_actorKnowledgeCollections)
+    {
+        // Ensure the collection object is valid.
+        // Address: 140265b9a
+        if (IsValid(Collection))
+        {
+            // Check if the collection is available to the player and contains the target actor.
+            // Address: 140265bc9 (IsAvailable), 140265bd8 (Contains)
+            if (Collection->IsAvailable(knowledgePossessor) && Collection->Contains(possiblyKnownActor))
+            {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
+
+
+
+bool UDBDGameInstance::IsConnectedToNetwork()
+{
+    // Check the internal connection status variable.
+    // Address: 140265d36
+    // The comparison checks if status is 0x4. If so, it returns false.
+    // This implies 0x4 represents a 'Disconnected' or 'NoConnection' state.
+    if (this->_ConnectionStatus == EOnlineServerConnectionStatus::Type::NoNetworkConnection)
+    {
+        return false;
+    }
+
+    // Load the "OnlinePresence" module to check system-level connectivity.
+    // Address: 140265d5c
+    IOnlinePresencePlugin& PresenceModule = FModuleManager::LoadModuleChecked<IOnlinePresencePlugin>(FName("OnlinePresence"));
+
+    // Call the virtual function at offset 0xA0 on the module interface.
+    // Address: 140265d67
+    if (!PresenceModule.IsConnected()) /* Offset 0xA0 */
+    {
+        return false;
+    }
+
+    // Finally, check if the main profile is explicitly signed in.
+    // Address: 140265d7b (Tail Call optimization in disassembly)
+    return this->IsMainProfileSignedIn(true);
 }

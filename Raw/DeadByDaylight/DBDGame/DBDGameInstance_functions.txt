@@ -120,7 +120,6 @@ UDBDGameInstance::GetScreenController
 UDBDGameInstance::HandleDisconnectError
 UDBDGameInstance::HasDetectedNetworkConnectionFailure
 UDBDGameInstance::HasOfferingOfType
-UDBDGameInstance::HasOfferingOfType
 UDBDGameInstance::Init
 UDBDGameInstance::InitAnalogCursor
 UDBDGameInstance::InitProceduralGenerationData
