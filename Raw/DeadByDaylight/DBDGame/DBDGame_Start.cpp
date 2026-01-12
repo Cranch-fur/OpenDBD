@@ -599,3 +599,282 @@ void ADBDGame_Start::InitPlayerProfile()
         }
     }
 }
+
+
+
+
+void ADBDGame_Start::LoadPlayerCurrenciesFromMirrors()
+{
+    // Set the current load progress state to 'LoadingMirrorCurrencies' (Value 0x8 from disassembly)
+    this->SetLoadProgress(LoadingMirrorCurrencies);
+
+    // Retrieve the current GameInstance
+    UGameInstance* GameInstance = this->GetGameInstance();
+
+    // Check if GameInstance exists
+    if (GameInstance == nullptr)
+    {
+        return;
+    }
+
+    // Cast generic GameInstance to the project-specific UDBDGameInstance
+    // The disassembly performs a manual class hierarchy check (IsA/Cast logic)
+    UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(GameInstance);
+
+    // Check if the cast was successful
+    if (DBDGameInstance == nullptr)
+    {
+        return;
+    }
+
+    // Ensure the GameInstance object is valid (not pending kill/garbage collected)
+    // Disassembly checks GUObjectArray flags here
+    if (IsValid(DBDGameInstance) == false)
+    {
+        return;
+    }
+
+    // Retrieve the local DBD Player Controller from the Game Instance
+    ADBDPlayerControllerBase* LocalDBDPlayerController = DBDGameInstance->GetLocalDBDPlayerController();
+
+    // Check if the Player Controller exists
+    if (LocalDBDPlayerController == nullptr)
+    {
+        return;
+    }
+
+    // Ensure the Player Controller is valid (not pending kill) and check an internal state flag
+    // Disassembly checks GUObjectArray flags (IsValid) and a specific bit at offset 0x140
+    if (IsValid(LocalDBDPlayerController) == false)
+    {
+        return;
+    }
+
+    /* UNDEFINED ELEMENT: Additional check for bit 4 at offset 0x140 in ADBDPlayerControllerBase (e.g., if (LocalDBDPlayerController->SomeStateFlag & 0x4)) */
+    // Since the flag definition is missing, we proceed assuming IsValid is the primary safety check.
+
+    // Register a callback for when the currencies have finished loading
+    // The handle is stored in _loadCurrenciesHandle (offset 0x500)
+    // We use AddUObject to bind the member function OnPlayerCurrenciesLoadComplete to the delegate
+    this->_loadCurrenciesHandle = LocalDBDPlayerController->OnMirrorCurrenciesLoadComplete.AddUObject(this, &ADBDGame_Start::OnPlayerCurrenciesLoadComplete);
+
+    // Initialize the currency mirroring process on the local player controller
+    LocalDBDPlayerController->Local_InitMirrorCurrencies();
+}
+
+
+
+
+void ADBDGame_Start::OnInitTimeout()
+{
+    // Initialize the response string indicating the timeout reason
+    // The disassembly explicitly resizes an array and copies "Init Timeout" into it, 
+    // which corresponds to the constructor or assignment of an FString in UE4.
+    FString ResponseString = TEXT("Init Timeout");
+
+    // Get the current Coordinated Universal Time (UTC)
+    FDateTime CurrentTime = FDateTime::UtcNow();
+
+    // Send analytics data regarding the connection attempt
+    // 1st argument: 0 (false) - Likely indicates a failure or 'Success' flag set to false
+    // 2nd argument: The response string defined above
+    // 3rd argument: The timestamp in ticks
+    this->SendMirrorsAnalytics(false, ResponseString, CurrentTime.GetTicks());
+
+    // Finalize the game initialization process with a failure state
+    // The value 0x6 corresponds to 'FailedBlockingNoDBDServer' based on the context
+    this->GameInitComplete(FailedBlockingNoDBDServer);
+}
+
+
+
+
+void ADBDGame_Start::OnPlayerCurrenciesLoadComplete(bool success)
+{
+    // Retrieve the Game Instance
+    UGameInstance* GameInstance = this->GetGameInstance();
+
+    // Check if GameInstance is valid before proceeding
+    if (GameInstance != nullptr)
+    {
+        // Cast to the project-specific GameInstance
+        UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(GameInstance);
+
+        // Ensure the cast was successful and the object is valid (not pending kill)
+        if (DBDGameInstance != nullptr)
+        {
+            if (IsValid(DBDGameInstance) == true)
+            {
+                // Get the local Player Controller
+                ADBDPlayerControllerBase* LocalDBDPlayerController = DBDGameInstance->GetLocalDBDPlayerController();
+
+                // Check if the Player Controller exists
+                if (LocalDBDPlayerController != nullptr)
+                {
+                    // Ensure the Player Controller is valid
+                    if (IsValid(LocalDBDPlayerController) == true)
+                    {
+                        // Check an internal state flag on the Player Controller (Offset 0x140, bit 4)
+                        // If the flag is set (jne jump in disassembly), we skip the unbinding process.
+                        if (LocalDBDPlayerController->bActorIsBeingDestroyed == false)
+                        {
+                            // Unbind the delegate to prevent multiple calls
+                            LocalDBDPlayerController->OnMirrorCurrenciesLoadComplete.Remove(this->_loadCurrenciesHandle);
+
+                            // Invalidate the handle
+                            this->_loadCurrenciesHandle.Reset();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Call GameInitComplete with status 0x1 (Likely 'Success' or 'Complete')
+    // This function is called regardless of whether the cleanup above succeeded or failed
+    this->GameInitComplete(Success);
+}
+
+
+
+
+void ADBDGame_Start::OnPlayerProfileLoadComplete(uint8_t success, const FString& errorString)
+{
+    // Retrieve the Game Instance to access global managers
+    UGameInstance* GameInstance = this->GetGameInstance();
+
+    if (GameInstance != nullptr)
+    {
+        UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(GameInstance);
+
+        // Check if the current GameInstance is a type of UDBDGameInstance using the class tree
+        if (IsValid(DBDGameInstance))
+        {
+                // Access the specific DBD Game Instance (offset 0x3C0 contains a sub-manager)
+                /* UNDEFINED ELEMENT */
+                // The disassembly shows access to GameInstance + 0x3C0, then + 0x30 for the delegate collection
+                // This corresponds to removing the profile load handle.
+
+                // Remove the delegate instance to prevent repeated calls
+                // Equivalent to: DBDGameInstance->GetProfileManager()->OnProfileLoadComplete.Remove(this->_loadProfileHandle);
+                /* UNDEFINED ELEMENT: TBaseMulticastDelegate<...>::RemoveDelegateInstance */
+
+                this->_loadProfileHandle.Reset();
+        }
+    }
+
+    // Logic for Analytics and Attribute tracking
+    // The following section reconstructs the BHVR Analytics event "SaveFileLoad"
+    TArray<FAnalyticsEventAttribute> AnalyticsAttributes; /* UNDEFINED ELEMENT: Reconstructed from Original_6 */
+
+    // Add "ProfileLoadSuccess_i" attribute
+    FString SuccessAttrKey = FString(TEXT("ProfileLoadSuccess_i"));
+    bool bSuccessValue = (success != 0);
+
+    // AddAttributes is a template helper for BHVR Analytics
+    /* UNDEFINED ELEMENT */
+    // this->AddAttributes(&AnalyticsAttributes, SuccessAttrKey, bSuccessValue);
+
+    if (success == false)
+    {
+        // If loading failed, add "ProfileLoadError_szni" attribute with the error string
+        FString ErrorAttrKey = FString(TEXT("ProfileLoadError_szni"));
+
+        /* UNDEFINED ELEMENT */
+        // this->AddAttributes(&AnalyticsAttributes, ErrorAttrKey, errorString);
+    }
+
+    // Record the analytics event "SaveFileLoad"
+    FString EventName = FString(TEXT("SaveFileLoad"));
+
+    /* UNDEFINED ELEMENT */
+    UBHVRAnalytics::RecordEvent(EventName, AnalyticsAttributes);
+
+    // Determine the next step of the game initialization flow
+    if (success != false)
+    {
+        // If profile loaded successfully, proceed to load currencies
+        this->LoadPlayerCurrenciesFromMirrors();
+    }
+    else
+    {
+        // If profile failed to load, terminate initialization with a recoverable error state (0x4)
+        // 0x4 corresponds to EProviderStep::FailedRecoverableProfileLoad
+        this->GameInitComplete(FailedRecoverableProfileLoad);
+    }
+
+    // Manual memory cleanup observed in disassembly for the temporary analytics structures
+    // In standard UE4 C++, TArray and FString handles this via destructors.
+}
+
+
+
+
+void ADBDGame_Start::SendMirrorsAnalytics(uint8_t success, FString responseString, FDateTime callTime)
+{
+    // Создаем массив атрибутов (то, что в логе Original_7)
+    TArray<FAnalyticsEventAttribute> attributes;
+
+    // Параметр Success_i (адрес 140272281)
+    attributes.Add(FAnalyticsEventAttribute(TEXT("Success_i"), (int32_t)success));
+
+    // Если неудача, добавляем Response_sz (адрес 1402722ac)
+    if (!success)
+    {
+        attributes.Add(FAnalyticsEventAttribute(TEXT("Response_sz"), responseString));
+    }
+
+    // Вычисление разницы времени (адрес 140272352)
+    // % 0x3e8 в логе — это millisToRespond % 1000
+    int32_t millisToRespond = (int32_t)((FDateTime::UtcNow().GetTicks() - callTime.GetTicks()) / 10000);
+    attributes.Add(FAnalyticsEventAttribute(TEXT("MillisecondsToRespond_i"), millisToRespond % 1000));
+
+    // Отправка события (адрес 1402723da)
+    UBHVRAnalytics::RecordEvent(TEXT("MirrorsLoginRequest"), attributes);
+
+    // В логе в конце принудительно чистится responseString (140272442)
+    // В обычном коде это сделает деструктор FString в конце функции.
+}
+
+
+
+
+void ADBDGame_Start::SetLoadProgress(ELoadProgress newProgress)
+{
+    // Устанавливаем новое значение прогресса
+    this->_loadProgress = newProgress;
+
+    // Проверяем уровень детализации логов категории GameFlow
+    // 5 соответствует уровню "Verbose" в Unreal Engine
+    if (GameFlow.Verbosity < Verbose)
+        return;
+
+    // Преобразуем значение Enum в строку (например, ELoadProgress::Connecting -> "Connecting")
+    FString progressString = Enum::ToString(newProgress);
+
+    // Вывод в лог через внутреннюю функцию Unreal Engine
+    // Аналог стандартного UE_LOG(LogGameFlow, Verbose, TEXT("[GameInit] New Init Progress: %s"), *progressString)
+    UE_LOG(LogGameFlow, Verbose, TEXT("[GameInit] New Init Progress: %s"), *progressString);
+}
+
+
+
+
+void ADBDGame_Start::StartPlay(class ADBDGame_Start* this)
+{
+    Super::StartPlay();
+
+    UGameInstance* rax = this->GetGameInstance();
+    
+    if (IsValid(rax))
+    {
+        UDBDGameInstance* rbx = Cast<UDBDGameInstance>(rax);
+
+        if(IsValid(rbx))
+        {
+            rbx->InitProceduralGenerationData();
+        }
+    }
+
+    DBDOnlineUtils::CheckOnlineSubsystem();
+}
