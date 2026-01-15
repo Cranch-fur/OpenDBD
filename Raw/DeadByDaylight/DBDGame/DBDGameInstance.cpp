@@ -6234,3 +6234,1827 @@ void UDBDGameInstance::OnGameRoundStarted()
     // Clears the sparse array/map used for caching player status.
     this->_cachePlayerStatus.Empty();
 }
+
+
+
+
+void UDBDGameInstance::OnLeavingOnlineMultiplayer()
+{
+    // The disassembly shows a comparison of the 'GameFlow' category verbosity against 0x6 (Verbose).
+    // If the check passes, it calls FMsg::Logf_Internal__VA.
+    // In Unreal Engine source code, this entire logic sequence is encapsulated in the UE_LOG macro.
+    // The log message is: "vvv OnLeavingOnlineMultiplayer vvv"
+    // Original source file: DBDGameInstance.cpp, Line: 3015
+    UE_LOG(GameFlow, Verbose, TEXT("vvv OnLeavingOnlineMultiplayer vvv"));
+}
+
+
+
+
+void UDBDGameInstance::OnNetworkConnectionLossDetected()
+{
+    // Initialize the comparison flag.
+    bool bSessionIdsMatch = false;
+
+    // Determine the Session Name based on the GameType in persistent data.
+    // 0x2 corresponds to a specific game type (likely SurvivorGroup/Party).
+    FName SessionName = NAME_GameSession;
+    if (this->_persistentData
+     && this->_persistentData->_gamePersistentData.SessionInfos.GameType == 0x2)
+    {
+        SessionName = NAME_PartySession;
+    }
+
+    // Retrieve the Matchmaking Subsystem via the OnlinePresencePlugin.
+    // The disassembly shows a call that returns a TSharedRef/Ptr to the subsystem.
+    TSharedPtr<IMatchmakingPresenceSubsystem> MatchmakingSubsystem = IOnlinePresencePlugin::Matchmaking();
+
+    if (MatchmakingSubsystem.IsValid())
+    {
+        // Access the specific session by name.
+        // The VTable offset 0x168 in the disassembly corresponds to GetNamedSession in this context.
+        /* UNDEFINED VTABLE: calling GetNamedSession via virtual offset 0x168 */
+        FNamedOnlineSession* NamedSession = MatchmakingSubsystem->GetNamedSession(SessionName);
+
+        if (NamedSession)
+        {
+            // Prepare strings for comparison.
+            FString LocalIdString;
+            FString SessionIdString;
+
+            // 1. Convert Local Player's UniqueNetId to Hex String.
+            ULocalPlayer* LocalPlayer = this->GetLocalPlayer();
+            if (LocalPlayer)
+            {
+                TSharedPtr<const FUniqueNetId> LocalNetId = ULocalPlayer::GetPreferredUniqueNetId(LocalPlayer);
+                if (LocalNetId.IsValid())
+                {
+                    // The disassembly explicitly loops through bytes and calls ByteToHex.
+                    // This creates a hex string representation of the NetID.
+                    const uint8* NetIdBytes = LocalNetId->GetBytes();
+                    int32 NetIdSize = LocalNetId->GetSize();
+                    for (int32 i = 0; i < NetIdSize; i++)
+                    {
+                        ByteToHex(NetIdBytes[i], LocalIdString);
+                    }
+                }
+            }
+
+            // 2. Convert Named Session's ID to Hex String.
+            // We retrieve the SessionInfo and its ID bytes.
+            if (NamedSession->SessionInfo.IsValid() && NamedSession->SessionInfo->GetSessionId().IsValid())
+            {
+                const uint8* SessionIdBytes = NamedSession->SessionInfo->GetSessionId()->GetBytes();
+                int32 SessionIdSize = NamedSession->SessionInfo->GetSessionId()->GetSize();
+                for (int32 i = 0; i < SessionIdSize; i++)
+                {
+                    ByteToHex(SessionIdBytes[i], SessionIdString);
+                }
+            }
+
+            // 3. Compare the two Hex Strings.
+            // If the strings are not empty and are identical (Case Insensitive), we flag a match.
+            // This usually implies the local player is the owner/host of the session.
+            if (LocalIdString.Len() > 0 && SessionIdString.Len() > 0)
+            {
+                // FGenericPlatformStricmp logic from disassembly
+                if (LocalIdString.Equals(SessionIdString, ESearchCase::IgnoreCase))
+                {
+                    bSessionIdsMatch = true;
+                }
+            }
+        }
+    }
+
+    // Branching logic based on comparison result.
+    if (bSessionIdsMatch)
+    {
+        // If the session ID matches the local player ID, perform immediate final check.
+        this->FinalNetworkConnectionCheck();
+    }
+    else
+    {
+        // If IDs do not match (or session/player data was missing), start a timeout timer.
+        // This gives the client 15 seconds to recover connection before fully timing out.
+
+        // Define the delegate to bind to OnNetworkConnectionTimedOut.
+        FTimerDelegate TimerDelegate;
+        TimerDelegate.BindUObject(this, &UDBDGameInstance::OnNetworkConnectionTimedOut);
+
+        // Set the timer using the TimerManager.
+        // Duration: 15.0f seconds.
+        // Loop: false.
+        if (this->TimerManager)
+        {
+            this->TimerManager->SetTimer(this->_onNetworkConnectionTimedOut, TimerDelegate, 15.0f, false);
+        }
+    }
+}
+
+
+
+
+void UDBDGameInstance::OnNetworkConnectionTimedOut()
+{
+    // Access the TimerManager (offset 0xd8) and call InternalClearTimer.
+    // The disassembly explicitly loads the address of the timer handle (lea rdx, [rcx+0x398]).
+    // We assume TimerManager is a pointer to FTimerManager stored in this class.
+    this->TimerManager->InternalClearTimer(&this->_onNetworkConnectionTimedOut);
+
+    // Explicitly invalidate the timer handle by setting its internal 64-bit value to 0.
+    // Disassembly: mov qword [rdi+0x398], 0x0
+    this->_onNetworkConnectionTimedOut.Handle = 0;
+
+    // Perform the final check for the network connection.
+    // In disassembly, this is a tail call (JMP), which in C++ is a function call at the end of the method.
+    this->FinalNetworkConnectionCheck();
+}
+
+
+
+
+void UDBDGameInstance::OnSaveCorrupted()
+{
+    // The disassembly performs the comparison of _saveCorruptionPopupEnabled (cmp) 
+    // and then unconditionally sets _saveCorruptionDetected to true (mov) 
+    // before acting on the comparison result (je).
+
+    // Set the flag indicating that a save file corruption has been detected.
+    // Disassembly: mov byte [rcx+0x55a], 0x1
+    this->_saveCorruptionDetected = true;
+
+    // Check if the save corruption popup is enabled.
+    // Disassembly: cmp byte [rcx+0x559], 0x0 -> je (jump if equal to 0/false)
+    if (this->_saveCorruptionPopupEnabled == false)
+    {
+        return;
+    }
+
+    // If the popup is enabled, show the system prompt with ID 0x67 (103).
+    // Disassembly: mov edx, 0x67 -> jmp UDBDGameInstance::ShowSystemPrompt
+    this->ShowSystemPrompt(0x67);
+}
+
+
+
+
+void UDBDGameInstance::OnUpdatePluginStateEvent(IOnlinePresencePlugin::EPluginState State)
+{
+    // Check if plugin notifications are explicitly allowed.
+    // Disassembly: cmp byte [rcx+0x9b2], 0x0 -> je 0x14026ce9e
+    if (this->_allowPresencePluginNotifications == false)
+    {
+        // If notifications are disabled, check verbosity and log a warning.
+        // Disassembly: 14026ceb3 (Label reached via jump from start)
+        if (GameFlow.Verbosity >= 5)
+        {
+            UE_LOG(GameFlow, Log, TEXT("UDBDGameInstance::OnUpdatePluginStateEvent: Ignoring this call, we're not allowing notifications (_allowPresencePluginNotifications == false)."));
+        }
+        return;
+    }
+
+    // If notifications are allowed, verify we aren't already disconnected.
+    // Disassembly: cmp byte [rcx+0x60b], 0x0 -> jne 0x14026ce9e
+    if (this->_isDisconnected != false)
+    {
+        return;
+    }
+
+    // Check the incoming State. 0x4 typically represents a stable "Connected" state.
+    // If the state is 0x4, we do nothing and return.
+    // Disassembly: cmp dl, 0x4 -> je 0x14026ce9e
+    if (State == (IOnlinePresencePlugin::EPluginState)0x4)
+    {
+        return;
+    }
+
+    // ---------------------------------------------------------
+    // If we are here, we have a connectivity issue (State != 0x4).
+    // ---------------------------------------------------------
+
+    // Check if the main profile (controller index 0) is signed in.
+    // Disassembly: call UDBDGameInstance::IsMainProfileSignedIn
+    if (this->IsMainProfileSignedIn(0) != false)
+    {
+        // Log the disconnection event if verbosity allows.
+        if (GameFlow.Verbosity >= 5)
+        {
+            UE_LOG(GameFlow, Log, TEXT("Got connectivity issue and we are connected. Disconnecting."));
+        }
+
+        // Mark the instance as disconnected.
+        // Disassembly: call UDBDGameInstance::SetIsDisconnected
+        this->SetIsDisconnected(true);
+    }
+    else
+    {
+        // If the profile wasn't signed in, log that we are ignoring the call.
+        if (GameFlow.Verbosity >= 5)
+        {
+            UE_LOG(GameFlow, Log, TEXT("UDBDGameInstance::OnUpdatePluginStateEvent: Ignoring this call, since the profile is offline and we should notify that."));
+        }
+    }
+
+    // Retrieve the OnlineSystemHandler to handle matchmaking cancellation.
+    // Disassembly: call UDBDGameInstance::GetOnlineSystemHandler
+    UOnlineSystemHandler* onlineSystemHandler = this->GetOnlineSystemHandler();
+
+    if (onlineSystemHandler != nullptr)
+    {
+        // Check if a quick match is currently in progress.
+        // Disassembly: call UOnlineSystemHandler::IsQuickmatchInProgress
+        if (onlineSystemHandler->IsQuickmatchInProgress() != false)
+        {
+            // Cancel the matchmaking.
+            // Disassembly: call UOnlineSystemHandler::CancelMatchmaking
+            onlineSystemHandler->CancelMatchmaking();
+        }
+    }
+}
+
+
+
+
+void UDBDGameInstance::ProcessSystemPromptCallbackForId(uint32_t transitionId)
+{
+    // Try to find the multicast delegate associated with the provided transition ID.
+    // The assembly code (0x14026f450 to 0x14026f4cd) represents the inlined logic of TMap::Find.
+    // It calculates the hash, traverses the internal sparse array, and retrieves the pointer to the value.
+    // We assume the value type is a standard FSimpleMulticastDelegate (void return, no params).
+    auto* callbackDelegate = this->_systemPromptCallbackMap.Find(transitionId);
+
+    // Check if the delegate exists in the map.
+    // Disassembly checks if the resulting pointer is valid (test rbx, rbx).
+    if (callbackDelegate != nullptr)
+    {
+        // Broadcast the delegate to notify all bound listeners.
+        // Disassembly: call ?Broadcast@?$TBaseMulticastDelegate@X$$V@@QEBAXXZ
+        callbackDelegate->Broadcast();
+
+        // Clear the delegate list explicitly before removing it from the map.
+        // Disassembly: call FMulticastDelegateBase<struct FWeakObjectPtr>::Clear
+        callbackDelegate->Clear();
+    }
+
+    // Remove the entry from the map using the transition ID.
+    // Disassembly: jmp ?Remove@... (Tail call optimization)
+    // The function ends by removing the key-value pair from the map.
+    this->_systemPromptCallbackMap.Remove(transitionId);
+}
+
+
+
+
+void UDBDGameInstance::RegisterDisconnectError(EDisconnectErrors aCheatDisconnectError, uint32_t errorCode, const FString* additionalInfo, uint8_t forceDisconnect)
+{
+    // Check if the verbosity level allows logging (Log level >= 5).
+    // Disassembly: cmp byte [rel GameFlow], 0x5 -> jb ...
+    if (GameFlow.Verbosity >= 5)
+    {
+        // Log the registration of the error.
+        // Disassembly: call FMsg::Logf_Internal__VA
+        UE_LOG(GameFlow, Log, TEXT("Registering Steam Auth or EAC Error (Error Type: %i; Error Code: %i)"), (int32)aCheatDisconnectError, errorCode);
+    }
+
+    // Check if the forceDisconnect flag is set.
+    // Disassembly: cmp byte [rsp+0x70], 0x0 -> je ...
+    if (forceDisconnect != 0)
+    {
+        // Mark the game instance as disconnected.
+        // Disassembly: mov dl, 0x1 -> call UDBDGameInstance::SetIsDisconnected
+        this->SetIsDisconnected(true);
+    }
+
+    // Store the specific error enum.
+    // Disassembly: mov byte [rbx+0x229], sil
+    this->DisconnectError = aCheatDisconnectError;
+
+    // Store the numeric error code.
+    // Disassembly: mov dword [rbx+0x22c], edi
+    this->LastAuthOrEACErrorCode = errorCode;
+
+    // Copy the additional info string.
+    // The disassembly performs a tail call (JMP) to TArray<uint16>::operator=.
+    // Since FString wraps TArray<TCHAR> (and TCHAR is uint16 on Windows), this copies the string content.
+    // Disassembly: jmp TArray<uint16_t, class FDefaultAllocator>::operator=
+    this->AuthOrEACErrorAdditionalInfo = *additionalInfo;
+}
+
+
+
+
+FDelegateHandle UDBDGameInstance::RegisterSoundEventListener(const TBaseDelegate<void, AActor*, FVector, bool, float>& delegateToRegister)
+{
+    // Initialize the result handle to an invalid state (ID = 0).
+    // Disassembly: mov qword [rdx], 0x0
+    // Note: In Unreal Engine, FDelegateHandle contains a 64-bit ID.
+    FDelegateHandle resultHandle;
+    resultHandle.Reset();
+
+    // Check if the SoundEventSystem instance exists.
+    // Disassembly: mov rcx, qword [rcx+0x3c8] -> test rcx, rcx -> je ...
+    if (this->_soundEventSystem != nullptr)
+    {
+        // Call the registration method on the SoundEventSystem and store the result.
+        // The disassembly allocates stack space for the return value of the inner call, 
+        // then copies the ID to the main return value.
+        // Disassembly: call SoundEventSystem::RegisterSoundEventListener
+        resultHandle = this->_soundEventSystem->RegisterSoundEventListener(delegateToRegister);
+    }
+
+    // Return the handle. In the ABI, this writes to the hidden pointer passed in RBX.
+    return resultHandle;
+}
+
+
+
+
+void UDBDGameInstance::RemoveActorKnowledgeCollection(UActorKnowledgeCollection* collection)
+{
+    // Check if the collection pointer is null.
+    // Disassembly: test rdx, rdx -> je ...
+    if (collection == nullptr)
+    {
+        return;
+    }
+
+    // Check if the object is valid (specifically, ensuring it is not marked as PendingKill).
+    // The disassembly performs a lookup in GUObjectArray and checks bit 29 (0x20000000), 
+    // which corresponds to the internal 'Pending Kill' or 'Unreachable' flag.
+    // If the object is pending kill, the function skips the removal logic.
+    if (IsValid(collection))
+    {
+        // Remove the collection from the local array.
+        // The disassembly shows a call to TArray::RemoveAll (or similar with a predicate), 
+        // which removes the specific instance from the array.
+        this->_actorKnowledgeCollections.Remove(collection);
+    }
+}
+
+
+
+
+void UDBDGameInstance::RemovePlayer(ADBDPlayer* player)
+{
+    // Remove the specified player from the internal players array (offset 0x5e8).
+    // The disassembly constructs a lambda predicate to match the pointer, 
+    // which corresponds to the standard TArray::Remove method.
+    // Disassembly: add rcx, 0x5e8 -> call TArray::RemoveAll
+    this->_players.Remove(player);
+}
+
+
+
+
+AActor* UDBDGameInstance::ResetLighting(FName mapTheme)
+{
+    // Retrieve the LightingHelper and destory the current lighting setup.
+    // Disassembly: call UDBDGameInstance::GetLightingHelper -> call ULightingHelper::DestroyLighting
+    this->GetLightingHelper()->DestroyLighting();
+
+    // Retrieve the LightingHelper again and reset the camera exposure settings.
+    // Disassembly: call UDBDGameInstance::GetLightingHelper -> call ULightingHelper::ResetExposure
+    this->GetLightingHelper()->ResetExposure();
+
+    // Retrieve the World pointer via virtual function call.
+    // Disassembly: call qword [rax+0x108]
+    // Offset 0x108 (264 decimal) corresponds to index 33 in the VTable. 
+    // In UE4's UObject hierarchy, this is the standard virtual slot for GetWorld().
+    UWorld* world = this->GetWorld();
+
+    // Generate the new lighting actor based on the provided map theme.
+    // Disassembly: call UDBDGameInstance::GetLightingHelper -> call ULightingHelper::GenerateLighting
+    class AActor* newLighting = (class AActor*)this->GetLightingHelper()->GenerateLighting(world, mapTheme);
+
+    // Apply specific offering modifications (e.g. Darkest Moonlight, Fog offerings).
+    // Disassembly: call UDBDGameInstance::ApplyOfferingModification
+    this->ApplyOfferingModification();
+
+    // Return the created lighting actor (likely cast from ABaseSky* to AActor*).
+    return newLighting;
+}
+
+
+
+
+void UDBDGameInstance::SetAdditionalContentCheckEnabled(bool enabled)
+{
+    if (enabled)
+    {
+        // Check if the delegate is not already registered (handle ID is 0).
+        // Disassembly: cmp qword [rcx+0x3a8], 0x0
+        if (this->_onAdditionalContentInstalled.IsValid() == false)
+        {
+            // Register the member function OnAdditionalContentInstalled to the global FCoreDelegates list.
+            // Disassembly: call AddUObject template
+            this->_onAdditionalContentInstalled = FCoreDelegates::OnAdditionalContentInstalled.AddUObject(this, &UDBDGameInstance::OnAdditionalContentInstalled);
+        }
+    }
+    else
+    {
+        // Check if the delegate is currently registered (handle ID is not 0).
+        // Disassembly: test rdx, rdx -> je ...
+        if (this->_onAdditionalContentInstalled.IsValid())
+        {
+            // Remove the delegate from the global list using the stored handle.
+            // Disassembly: call RemoveDelegateInstance
+            FCoreDelegates::OnAdditionalContentInstalled.Remove(this->_onAdditionalContentInstalled);
+
+            // Reset the local handle to indicate no subscription.
+            // Disassembly: mov qword [rbx+0x3a8], 0x0
+            this->_onAdditionalContentInstalled.Reset();
+        }
+    }
+}
+
+
+
+
+void UDBDGameInstance::SetCorruptedSaveMessageEnabled(bool enabled)
+{
+    // Update the flag that controls whether the corruption popup is shown.
+    // Disassembly: mov byte [rcx+0x559], dl
+    this->_saveCorruptionPopupEnabled = enabled;
+
+    // Check if save corruption has already been detected.
+    // Disassembly: cmp byte [rcx+0x55a], 0x0 -> je ...
+    if (this->_saveCorruptionDetected != false)
+    {
+        // Re-affirm the corruption detected flag (explicitly setting it to true).
+        // Disassembly: mov byte [rcx+0x55a], 0x1
+        this->_saveCorruptionDetected = true;
+
+        // If the popup is now enabled, show the system prompt immediately.
+        // Disassembly: test dl, dl -> je ...
+        if (enabled != false)
+        {
+            // Tail call to ShowSystemPrompt with ID 0x67 (103).
+            // Disassembly: jmp UDBDGameInstance::ShowSystemPrompt
+            this->ShowSystemPrompt(0x67);
+        }
+    }
+}
+
+
+
+
+void UDBDGameInstance::SetIsAppResumed(bool isAppResumed)
+{
+    // Set the internal flag indicating whether the application has been resumed.
+    // Disassembly: mov byte [rcx+0x610], dl
+    this->_isAppResumed = isAppResumed;
+}
+
+
+
+
+void UDBDGameInstance::SetIsDisconnected(bool isDisconnected)
+{
+    // Check if Verbosity level allows logging (Log level >= 5).
+    // Disassembly: cmp byte [rel GameFlow], 0x5 -> jb ...
+    if (GameFlow.Verbosity >= 5)
+    {
+        // Select string representation for the boolean values using ternary logic.
+        // Disassembly: cmovne instructions for "true"/"false" selection.
+        const TCHAR* newStatusStr = isDisconnected ? TEXT("true") : TEXT("false");
+        const TCHAR* oldStatusStr = this->_isDisconnected ? TEXT("true") : TEXT("false");
+
+        // Log the transition.
+        // Disassembly: call FMsg::Logf_Internal__VA
+        UE_LOG(GameFlow, Log, TEXT("SetIsDisconnected from: %s to: %s"), oldStatusStr, newStatusStr);
+    }
+
+    // Cache the context system pointer.
+    // Disassembly: mov rdx, qword [rbx+0x3b0]
+    UGameFlowContextSystem* contextSystem = this->_contextSystem;
+
+    // Update the internal state.
+    // Disassembly: mov byte [rbx+0x60b], dil
+    this->_isDisconnected = isDisconnected;
+
+    // Check if the context system pointer is not null.
+    // Disassembly: test rdx, rdx -> je ...
+    if (contextSystem != nullptr)
+    {
+        // Verify the object is valid (not marked as Pending Kill / Unreachable).
+        // The disassembly explicitly looks up the object flags in GUObjectArray and checks bit 29.
+        // In Unreal Engine C++, this is encapsulated in IsValid().
+        if (IsValid(contextSystem))
+        {
+            // Log the current contexts.
+            // Disassembly: call UGameFlowContextSystem::LogCurrentContexts
+            contextSystem->LogCurrentContexts();
+        }
+    }
+}
+
+
+
+
+void UDBDGameInstance::SetNetworkConnectionCheckingEnabled(bool enabled, bool skipTimeout)
+{
+    if (enabled)
+    {
+        // Check current network connectivity.
+        // Disassembly: call UDBDGameInstance::IsConnectedToNetwork
+        if (this->IsConnectedToNetwork() == false)
+        {
+            // If not connected, decide how to handle the disconnection based on skipTimeout.
+            // Disassembly: test bl, bl -> je ...
+            if (skipTimeout != false)
+            {
+                this->FinalNetworkConnectionCheck();
+            }
+            else
+            {
+                this->OnNetworkConnectionLossDetected();
+            }
+        }
+
+        // Bind a lambda to the global MatchmakingRequiresReconnectDelegate.
+        // Disassembly: call BindLambda
+        // The exact body of the lambda is inlined/hidden, but it captures 'this'.
+        IMatchmakingPresenceSubsystem::MatchmakingRequiresReconnectDelegate.BindLambda([this]()
+            {
+                // Lambda implementation details are abstracted in the bind call.
+            });
+
+        // Check if we are already listening for connection changes.
+        // Disassembly: cmp qword [rdi+0x3a0], 0x0
+        if (this->_onConnectionChangedHandle.IsValid() == false)
+        {
+            // Get the OnlineSubsystem instance.
+            // Disassembly: call IOnlineSubsystem::Get
+            IOnlineSubsystem* onlineSubsystem = IOnlineSubsystem::Get();
+
+            if (onlineSubsystem != nullptr)
+            {
+                // Register a delegate to listen for connection status changes.
+                // The disassembly constructs a functor/lambda delegate and calls the virtual function at offset 0x148.
+                // Offset 0x148 corresponds to AddOnConnectionStatusChangedDelegate_Handle in IOnlineSubsystem.
+                this->_onConnectionChangedHandle = onlineSubsystem->AddOnConnectionStatusChangedDelegate_Handle(
+                    FOnConnectionStatusChangedDelegate::CreateLambda([this](EOnlineServerConnectionStatus::Type ConnectionStatus)
+                        {
+                            // Lambda body for connection status change.
+                        })
+                );
+            }
+        }
+    }
+    else
+    {
+        // Clear the network connection timeout timer.
+        // Disassembly: call FTimerManager::InternalClearTimer
+        this->TimerManager->InternalClearTimer(&this->_onNetworkConnectionTimedOut);
+
+        // Explicitly invalidate the timer handle.
+        // Disassembly: mov qword [rdi+0x398], rsi
+        this->_onNetworkConnectionTimedOut.Handle = 0;
+
+        // Get the OnlineSubsystem to unregister the delegate.
+        // Disassembly: call IOnlineSubsystem::Get
+        IOnlineSubsystem* onlineSubsystem = IOnlineSubsystem::Get();
+
+        if (onlineSubsystem != nullptr)
+        {
+            // Unregister the connection status changed delegate.
+            // Virtual function at offset 0x150 corresponds to ClearOnConnectionStatusChangedDelegate_Handle.
+            // Disassembly: call qword [r8+0x150]
+            onlineSubsystem->ClearOnConnectionStatusChangedDelegate_Handle(this->_onConnectionChangedHandle);
+        }
+
+        // Reset the local handle.
+        // Disassembly: mov qword [rdi+0x3a0], rsi
+        this->_onConnectionChangedHandle.Reset();
+
+        // Unbind the global MatchmakingRequiresReconnectDelegate.
+        // The massive block of assembly (memmove, realloc, free) starting at 14027389a
+        // is the inlined implementation of TBaseMulticastDelegate::Unbind / Clear.
+        IMatchmakingPresenceSubsystem::MatchmakingRequiresReconnectDelegate.Unbind();
+    }
+}
+
+
+
+
+void UDBDGameInstance::SetNetworkConnectionMonitoringOnly(bool enabled)
+{
+    // Check if the state is actually changing.
+    // Disassembly: cmp byte [rcx+0x609], dl -> je ...
+    if (this->_networkConnectionMonitoringOnly == enabled)
+    {
+        return;
+    }
+
+    // Update the monitoring mode flag.
+    // Disassembly: mov byte [rcx+0x609], dl
+    this->_networkConnectionMonitoringOnly = enabled;
+
+    // If we are enabling monitoring only mode, reset the failure detected flag.
+    // Disassembly: test dl, dl -> je ...
+    if (enabled != false)
+    {
+        // Disassembly: mov byte [rcx+0x608], 0x0
+        this->_networkFailureDetected = false;
+    }
+}
+
+
+
+
+void UDBDGameInstance::SetShowLoadingIcon(bool show)
+{
+    UUIController* uiController = nullptr;
+
+    // Check if the Context System exists.
+    // Disassembly: mov rcx, qword [rcx+0x3b0] -> test rcx, rcx
+    if (this->_contextSystem != nullptr)
+    {
+        // Check if the Root Movie exists within the Context System.
+        // Disassembly: mov rcx, qword [rcx+0x88] -> test rcx, rcx
+        if (this->_contextSystem->m_RootMovie != nullptr)
+        {
+            // Retrieve the UI Controller from the Root Movie.
+            // Disassembly: mov rcx, qword [rcx+0x98]
+            uiController = this->_contextSystem->m_RootMovie->m_UIController;
+        }
+    }
+
+    // If a valid UI Controller was found, call the display function.
+    // Disassembly: test rcx, rcx -> jne UUIController::DisplayLoadingAnimation
+    if (uiController != nullptr)
+    {
+        // Tail call optimization in disassembly (JMP instead of CALL).
+        // The 'show' argument (passed in RDX/DL) is preserved throughout the pointer traversal.
+        uiController->DisplayLoadingAnimation(show);
+    }
+}
+
+
+
+
+bool UDBDGameInstance::ShouldResetPlayerData(bool fromOfflineLobby)
+{
+    // Check if the GameType in persistent data is set to 1 (likely EGameType::KillYourFriends / Custom).
+    // Disassembly: cmp byte [rax+0x60], 0x1 -> jne ...
+    if (this->_persistentData->_gamePersistentData.LastSessionInfos.GameType != 1)
+    {
+        return false;
+    }
+
+    // If explicitly coming from an offline lobby, force a reset.
+    // Disassembly: test dl, dl -> jne ...
+    if (fromOfflineLobby != false)
+    {
+        return true;
+    }
+
+    // Load the "OnlinePresence" module.
+    // Disassembly: call FModuleManager::LoadModuleChecked
+    IOnlinePresencePlugin* onlinePresencePlugin = FModuleManager::LoadModuleChecked<IOnlinePresencePlugin>(FName("OnlinePresence"));
+
+    // Check if the online presence plugin is ready/connected via virtual function at offset 0xA0.
+    // Disassembly: call qword [rdx+0xa0]
+    if (onlinePresencePlugin->IsConnected() == false)
+    {
+        return true;
+    }
+
+    // Retrieve the matchmaking subsystem.
+    // Disassembly: call IOnlinePresencePlugin::Matchmaking
+    // Note: This returns a TSharedRef/TSharedPtr, handling reference counting seen in disassembly.
+    TSharedPtr<IMatchmakingPresenceSubsystem> matchmakingSubsystem = onlinePresencePlugin->Matchmaking();
+
+    // Retrieve the active session (GameSessionName) via virtual function at offset 0x168.
+    // Disassembly: call qword [rax+0x168]
+    FNamedOnlineSession* onlineSession = matchmakingSubsystem->GetNamedSession(FName("GameSession"));
+    if (onlineSession == nullptr)
+    {
+        return true;
+    }
+
+    // Extract the OwningUserId (FUniqueNetId) from the session object (Offset 0x8).
+    // Disassembly: mov rsi, qword [rax+0x8]
+    FUniqueNetId* sessionOwnerId = onlineSession->OwningUserId;
+
+    if (sessionOwnerId == nullptr)
+    {
+        return true;
+    }
+
+    // Retrieve the cached Host ID from the persistent data.
+    // Disassembly: mov rcx, qword [rax+0x68]
+    FUniqueNetId* storedHostId = this->_persistentData->_gamePersistentData.LastSessionInfos.Host.Object;
+
+    if (storedHostId == nullptr)
+    {
+        return true;
+    }
+
+    // Convert both IDs to Hex Strings for comparison.
+    // Disassembly: call FUniqueNetId::GetHexEncodedString
+    FString sessionOwnerHex = sessionOwnerId->GetHexEncodedString();
+    FString storedHostHex = storedHostId->GetHexEncodedString();
+
+    // Compare the hex strings case-insensitively.
+    // Disassembly: call FGenericPlatformStricmp::CompatibleCharTypesStricmp
+    if (sessionOwnerHex.Equals(storedHostHex, ESearchCase::IgnoreCase))
+    {
+        // If the IDs match, we are still in the same session environment, so do NOT reset.
+        return false;
+    }
+
+    // If IDs do not match, we should reset the player data.
+    return true;
+}
+
+
+
+
+void UDBDGameInstance::ShowNetworkErrorPrompt()
+{
+    // Check if the special UI flow for network errors is active.
+    // Disassembly: cmp byte [rcx+0x614], 0x0 -> jne 0x140275e00
+    if (this->_networkErrorSpecialUIFlow != false)
+    {
+        return;
+    }
+
+    // Check if the game is currently transitioning to the splash screen.
+    // Disassembly: cmp byte [rcx+0x9b0], 0x0 -> je 0x140275da0
+    if (this->_travelingToSplash != false)
+    {
+        // Check verbosity level (Warning = 3) before logging.
+        // Disassembly: cmp byte [rel GameFlow], 0x3 -> jb 0x140275e00
+        if (GameFlow.Verbosity >= 3)
+        {
+            // Log that the error prompt was suppressed.
+            // Disassembly: call FMsg::Logf_Internal__VA
+            UE_LOG(GameFlow, Warning, TEXT("UDBDGameInstance::ShowNetworkErrorPrompt: error not showed since we're traveling to splash screen"));
+        }
+        return;
+    }
+
+    // Check if a network error prompt is already being displayed.
+    // Disassembly: cmp byte [rcx+0x9b1], 0x0 -> je 0x140275deb
+    if (this->_showingNetworkError != false)
+    {
+        // Check verbosity level (Warning = 3).
+        if (GameFlow.Verbosity >= 3)
+        {
+            // Log that the error prompt is already active.
+            UE_LOG(GameFlow, Warning, TEXT("UDBDGameInstance::ShowNetworkErrorPrompt: already showing a network error"));
+        }
+        return;
+    }
+
+    // Mark that a network error prompt is now being shown.
+    // Disassembly: mov byte [rcx+0x9b1], 0x1
+    this->_showingNetworkError = true;
+
+    // Trigger the system prompt with ID 0x77 (119).
+    // Disassembly: mov edx, 0x77 -> jmp UDBDGameInstance::ShowSystemPrompt
+    this->ShowSystemPrompt(0x77);
+}
+
+
+
+
+void UDBDGameInstance::ShowSystemPrompt(uint32_t transitionId)
+{
+    // Check if the Context System exists (offset 0x3b0).
+    // Disassembly: test rax, rax -> je 0x140275ed0
+    if (this->_contextSystem == nullptr)
+    {
+        return;
+    }
+
+    // Access the 'm_SystemPromptsContextGroup' which is a std::shared_ptr<CTX::ContextGroup>.
+    // The disassembly explicitly manipulates the reference count (_Rep) to ensure the object
+    // stays alive during the call (standard shared_ptr behavior).
+    // Disassembly: lock inc dword [rbx+0x8] (Increment Ref Count)
+    if (this->_contextSystem->m_SystemPromptsContextGroup != nullptr)
+    {
+        // Call RequestTransition on the context group.
+        // The function returns a shared_ptr (TransitionHandleGroup), but the disassembly
+        // immediately destroys it (decrements ref count), meaning the return value is ignored.
+        // Arguments:
+        // Arg1 (R8): 1
+        // Arg2 (R9): transitionId
+        // Arg3 (Stack): 1
+        // Disassembly: call CTX::ContextGroup::RequestTransition
+        this->_contextSystem->m_SystemPromptsContextGroup->RequestTransition(1, transitionId, 1);
+    }
+    // The compiler automatically handles the decrement of the reference counts (destructors) here.
+}
+
+
+
+
+void UDBDGameInstance::ShowSystemPromptWithCallback(uint32_t transitionId, FSimpleDelegate onClosed)
+{
+    // Find or add the multicast delegate associated with the provided transition ID.
+    // The large block of assembly (from start to 0x140275fa3) represents the inlined logic of TMap::FindOrAdd.
+    // It performs hash calculation, probing, and calls Emplace if the key is not found.
+    FSimpleMulticastDelegate& promptDelegate = this->_systemPromptCallbackMap.FindOrAdd(transitionId);
+
+    // Bind the provided callback delegate to the multicast delegate in the map.
+    // Disassembly: call TBaseMulticastDelegate::Add
+    promptDelegate.Add(onClosed);
+
+    // Trigger the system prompt display for the given ID.
+    // Disassembly: call UDBDGameInstance::ShowSystemPrompt
+    this->ShowSystemPrompt(transitionId);
+
+    // The 'onClosed' delegate passed by value goes out of scope here.
+    // Disassembly: call FDelegateBase::Unbind -> call FMemory::Free
+    // This is the destructor of the FSimpleDelegate parameter.
+}
+
+
+
+
+void UDBDGameInstance::Shutdown()
+{
+    // Cleanup Context System and Online Sessions.
+    // Disassembly checks if _contextSystem is valid (not pending kill).
+    if (this->_contextSystem != nullptr && IsValid(this->_contextSystem))
+    {
+        UOnlineSystemHandler* onlineSystemHandler = this->_contextSystem->m_OnlineSystemHandler;
+
+        // Cleanup Online System Handler sessions.
+        if (onlineSystemHandler != nullptr && IsValid(onlineSystemHandler))
+        {
+            // Destroy Game and Party sessions.
+            // Arguments: SessionName, bEndGame (bool).
+            // data_143621a20 -> NAME_GameSession
+            // data_143621a28 -> NAME_PartySession
+            onlineSystemHandler->DestroyExistingSession(NAME_GameSession, true);
+            onlineSystemHandler->DestroyExistingSession(NAME_PartySession, true);
+        }
+
+        // Terminate the context system.
+        this->_contextSystem->Terminate();
+        this->_contextSystem = nullptr;
+    }
+
+    // Reset pointers to various subsystems.
+    this->DesignTunables = nullptr;
+    this->RegionFinder = nullptr;
+    this->_playerDataFacade = nullptr;
+    this->_persistentData = nullptr;
+
+    // Destroy Sound Event System.
+    // This is a raw pointer (not UObject), so it is explicitly deleted.
+    if (this->_soundEventSystem != nullptr)
+    {
+        // Disassembly: operator delete(ptr, 0x70)
+        delete this->_soundEventSystem;
+        this->_soundEventSystem = nullptr;
+    }
+
+    // Clear Game Event Tracker.
+    if (this->GameEventTracker != nullptr && IsValid(this->GameEventTracker))
+    {
+        this->GameEventTracker = nullptr;
+    }
+
+    // Interact with OnlinePresence module for cleanup.
+    // Calls specific virtual functions on the module interface.
+    IOnlinePresencePlugin* onlinePresence = FModuleManager::LoadModuleChecked<IOnlinePresencePlugin>(FName("OnlinePresence"));
+    if (onlinePresence)
+    {
+        // Disassembly: call qword [rdx+0x60]
+        // Offset 0x60 (96 decimal) -> Index 12 in VTable.
+        onlinePresence->Disconnect();
+
+        // Disassembly: call qword [rdx+0x68]
+        // Offset 0x68 (104 decimal) -> Index 13 in VTable.
+        onlinePresence->Shutdown();
+    }
+
+    this->KeyDisplayInfo = nullptr;
+
+    // Stop and destroy the global/static Dump Thread Task.
+    // Address is relative (rel dumpThreadTask), implying a file-static or global variable.
+    if (DumpThreadTask != nullptr)
+    {
+        // Stop the task.
+        DumpThreadTask->Stop();
+
+        // Wait for the thread to finish.
+        if (DumpThreadTask->Thread != nullptr)
+        {
+            DumpThreadTask->Thread->WaitForCompletion();
+        }
+
+        // Delete the task.
+        delete DumpThreadTask;
+        DumpThreadTask = nullptr;
+    }
+
+    // Cleanup Easy Anti-Cheat (EAC).
+    if (this->_eac != nullptr && IsValid(this->_eac))
+    {
+        UDBDEasyAntiCheat::DestroySession(this->_eac);
+        UDBDEasyAntiCheat::DestroyClient(this->_eac);
+    }
+
+    // Unregister Input PreProcessor (Analog Cursor).
+    if (FSlateApplication::IsInitialized())
+    {
+        // Pass a null shared pointer to clear the processor.
+        FSlateApplication::Get().SetInputPreProcessor(nullptr);
+    }
+
+    // Reset the local shared pointer to the analog cursor.
+    // Disassembly: explicitly decrements reference counts (destructor of TSharedPtr).
+    this->AnalogCursor = nullptr;
+
+    // Call parent implementation.
+    // Disassembly: jmp UGameInstance::Shutdown (Tail call)
+    Super::Shutdown();
+}
+
+
+
+
+void UDBDGameInstance::SimulateOfferingSequence(const TArray<FName>* offerings, bool playSequence)
+{
+    // Set the simulation flow flag to true.
+    // Disassembly: mov byte [rcx+0x3e8], 0x1
+    this->_simulationFlow = true;
+
+    // Create a local copy of the offerings array.
+    // The disassembly explicitly resizes and memcopies the data, which represents the TArray copy constructor.
+    // TArray<FName> localOfferings = *offerings;
+    TArray<FName> localOfferings;
+    localOfferings = *offerings;
+
+    // Retrieve the World pointer via virtual function call.
+    // Offset 0x108 corresponds to index 33 in the VTable, which is GetWorld() in AActor/UObject.
+    // Disassembly: call qword [rax+0x108]
+    UWorld* world = this->GetWorld();
+
+    // Setup the offering simulation in the handler using the local copy of offerings.
+    // Disassembly: call UDBDGameInstance::GetOfferingHandler -> call UOfferingHandler::SetupOfferingSimulation
+    this->GetOfferingHandler()->SetupOfferingSimulation(world, localOfferings);
+
+    // Check if the visual sequence should be played.
+    // Disassembly: test bpl, bpl -> je ...
+    if (playSequence != false)
+    {
+        // Start the offering sequence animation/logic.
+        // Disassembly: call UDBDGameInstance::StartOfferingSequence
+        this->StartOfferingSequence();
+    }
+    else
+    {
+        // Process the offerings immediately without playing the sequence.
+        // The results are stored in the member variable _resultEffects01 (offset 0x128).
+        // Disassembly: call UOfferingHandler::ProcessOfferings
+        this->GetOfferingHandler()->ProcessOfferings(&this->_resultEffects01);
+    }
+}
+
+
+
+
+void UDBDGameInstance::SimulatePerk(TArray<FName> perks, int32 level)
+{
+    // Retrieve the list of current in-game players.
+    // Disassembly: call UDBDGameInstance::GetInGamePlayers
+    TArray<ADBDPlayer*> inGamePlayers;
+    this->GetInGamePlayers(inGamePlayers);
+
+    // Iterate through each player.
+    for (ADBDPlayer* player : inGamePlayers)
+    {
+        // Basic validity check (pointer not null and object valid).
+        // Disassembly: checks GUObjectArray flags.
+        if (player == nullptr || IsValid(player) == false)
+        {
+            continue;
+        }
+
+        // Check a specific boolean flag at offset 0x140, bit 2 (Value 4).
+        // If this bit is set, skip the player (e.g., IsSpectator or similar state).
+        // Disassembly: test byte [rdi+0x140], 0x4 -> jne ...
+        bool bShouldSkip = player->bActorIsBeingDestroyed != 0;
+        if (bShouldSkip)
+        {
+            continue;
+        }
+
+        // Call a virtual function at a very high offset (0x1070 / 4208) to verify if the player can receive perks.
+        // Disassembly: call qword [rax+0x1070]
+        if (player->IsValidImpl() == false)
+        {
+            continue;
+        }
+
+        // Iterate through the provided perks array.
+        for (const FName& perkId : perks)
+        {
+            // Retrieve the perk data from DesignTunables.
+            // Disassembly: call UDBDDesignTunables::GetPerkData
+            FPerkProperties* perkData = UDBDDesignTunables::GetPerkData(this->DesignTunables, perkId, 1);
+
+            if (perkData != nullptr)
+            {
+                // Check if the perk role matches the player's role.
+                // Disassembly: call ADBDPlayer::GetPlayerRole
+                if (perkData->Role == player->GetPlayerRole())
+                {
+                    // Determine the level to spawn. Capped at 2.
+                    // Disassembly: mov r8d, 2; cmp r15d, r8d; cmovle r8d, r15d
+                    int32 spawnLevel = 2;
+                    if (level <= 2)
+                    {
+                        spawnLevel = level;
+                    }
+
+                    // Spawn the perk on the server (or simulate it).
+                    // Disassembly: call ADBDPlayer::Server_SpawnPerk
+                    player->Server_SpawnPerk(perkId, spawnLevel);
+                }
+            }
+        }
+    }
+
+    // The 'perks' array passed by value is destroyed here (memory freed).
+    // Disassembly: call FMemory::Free (for perks buffer)
+}
+
+
+
+
+void UDBDGameInstance::SoundBankLoadRequest(ULoadAsyncBankData* data)
+{
+    // Attempt to enter the critical section to protect the pending load array.
+    // The disassembly explicitly calls the Windows API primitives.
+    // Disassembly: call TryEnterCriticalSection -> test eax, eax -> jne ...
+    if (TryEnterCriticalSection(&this->LoadAudioCriticalSection) == false)
+    {
+        // If the attempt failed, block until the critical section can be entered.
+        // Disassembly: call EnterCriticalSection
+        EnterCriticalSection(&this->LoadAudioCriticalSection);
+    }
+
+    // Add the load data request to the pending array (AddUnique ensures no duplicates).
+    // Disassembly: lea rcx, [rsi+0x430] -> call TArray::AddUniqueImpl
+    this->_asyncAudioBanksPendingLoadData.AddUnique(data);
+
+    // Release the critical section.
+    // Disassembly: call LeaveCriticalSection
+    LeaveCriticalSection(&this->LoadAudioCriticalSection);
+
+    // Initiate the asynchronous load of the AkAudioBank.
+    // The disassembly loads the 'Bank' property from offset 0x28 of the data object.
+    // It passes a static/global callback function 'HandleAudioBankLoaded'.
+    // Disassembly: mov rcx, qword [rdi+0x28] -> jmp UAkAudioBank::LoadAsync
+    UAkAudioBank::LoadAsync(data->Bank, &HandleAudioBankLoaded, data);
+}
+
+
+
+
+void UDBDGameInstance::SoundBankLoaded(ULoadAsyncBankData* data)
+{
+    // Enter critical section to safely modify the pending load list.
+    // Disassembly: call TryEnterCriticalSection / EnterCriticalSection
+    if (TryEnterCriticalSection(&this->LoadAudioCriticalSection) == false)
+    {
+        EnterCriticalSection(&this->LoadAudioCriticalSection);
+    }
+
+    // Remove the data object from the pending loads array.
+    // Disassembly: call TArray::RemoveAll (via lambda predicate)
+    this->_asyncAudioBanksPendingLoadData.Remove(data);
+
+    // Leave critical section.
+    // Disassembly: call LeaveCriticalSection
+    LeaveCriticalSection(&this->LoadAudioCriticalSection);
+
+    // Retrieve the UAkAudioBank from the data object.
+    // Disassembly: mov rcx, qword [rax+0x28]
+    UAkAudioBank* loadedBank = data->Bank;
+
+    // Check if the bank pointer is valid and the object itself is valid (not pending kill).
+    // Disassembly: IsValid check logic via GUObjectArray.
+    if (loadedBank != nullptr && IsValid(loadedBank))
+    {
+        // Add the loaded bank to the persistent list of audio banks.
+        // Disassembly: call TArray::AddUniqueImpl
+        this->_audioBanks.AddUnique(loadedBank);
+    }
+}
+
+
+
+
+void UDBDGameInstance::StartContextSystem()
+{
+    // Check if the context system is already initialized.
+    // Disassembly: cmp qword [rcx+0x3b0], 0x0 -> jne ...
+    if (this->_contextSystem != nullptr)
+    {
+        return;
+    }
+
+    // Get the transient package to use as the outer for the new object.
+    // Disassembly: call GetTransientPackage
+    UPackage* transientPackage = GetTransientPackage();
+
+    // Ensure we are not creating this object inside a constructor (where default subobjects should be used).
+    // Disassembly: call FObjectInitializer::AssertIfInConstructor
+    FObjectInitializer::AssertIfInConstructor(transientPackage, TEXT("NewObject with empty name can't be used to create default subobjects (inside of UObject derived class constructor) as it produces inconsistent object names. Use ObjectInitializer.CreateDefaultSuobject<> instead."));
+
+    // Retrieve the static class for UGameFlowContextSystem.
+    // Disassembly: call UGameFlowContextSystem::GetPrivateStaticClass
+    UClass* contextSystemClass = UGameFlowContextSystem::StaticClass();
+
+    // Create the new UGameFlowContextSystem object.
+    // In standard UE4 C++, this is NewObject<UGameFlowContextSystem>(GetTransientPackage()).
+    // The disassembly shows the internal call to StaticConstructObject_Internal.
+    // Arguments: Class, Outer, Name (None), Flags (RF_NoFlags), Template (nullptr), etc.
+    UGameFlowContextSystem* newContextSystem = (UGameFlowContextSystem*)StaticConstructObject_Internal(
+        contextSystemClass,
+        transientPackage,
+        NAME_None,
+        RF_NoFlags,
+        EInternalObjectFlags::None,
+        nullptr,
+        false,
+        nullptr
+    );
+
+    // Assign the new instance to the member variable.
+    // Disassembly: mov qword [rdi+0x3b0], rax
+    this->_contextSystem = newContextSystem;
+
+    // Initialize the context system with the current game instance.
+    // Disassembly: call FSignedArchiveReader::Seek
+    // NOTE: The symbol 'FSignedArchiveReader::Seek' in IDA/Decompilation is almost certainly incorrect
+    // and collides with 'UGameFlowContextSystem::Init' due to identical function signatures or offset.
+    // Contextually, we are initializing the system we just created.
+    this->_contextSystem->Init(this);
+}
+
+
+
+
+void UDBDGameInstance::StartDesignTunables()
+{
+    // Check if the DesignTunables instance already exists.
+    // Disassembly: cmp qword [rcx+0xf0], 0x0 -> jne ...
+    if (this->DesignTunables != nullptr)
+    {
+        return;
+    }
+
+    // Retrieve the target class class from the member variable (offset 0xe8).
+    // Disassembly: mov rsi, qword [rdi+0xe8]
+    UClass* tunablesClass = this->DesignTunableClass;
+
+    // Retrieve the static class of the base type UDBDDesignTunables for comparison.
+    // Disassembly: call UDBDDesignTunables::GetPrivateStaticClass
+    UClass* baseClass = UDBDDesignTunables::StaticClass();
+
+    UClass* classToSpawn = nullptr;
+
+    // Validate the class hierarchy.
+    // The disassembly performs a manual loop checking the SuperStruct chain to ensure 
+    // 'tunablesClass' is a child of 'baseClass'.
+    if (tunablesClass != nullptr && baseClass != nullptr)
+    {
+        UClass* currentStruct = tunablesClass;
+
+        // Loop through the inheritance chain.
+        // Disassembly: cmp rcx, rax ... mov rcx, qword [rcx+0x30]
+        while (currentStruct != baseClass)
+        {
+            // SuperStruct is at offset 0x30 in UStruct/UClass.
+            currentStruct = currentStruct->GetSuperClass();
+
+            // If we reach the root without finding the base class, it's invalid.
+            if (currentStruct == nullptr)
+            {
+                goto ClassValidationFailed;
+            }
+        }
+
+        // If the loop terminates because currentStruct == baseClass, the validation passed.
+        classToSpawn = tunablesClass;
+    }
+
+ClassValidationFailed:
+    // Ensure we are not inside a constructor, as NewObject/StaticConstructObject should not be used there.
+    // Disassembly: call FObjectInitializer::AssertIfInConstructor
+    FObjectInitializer::AssertIfInConstructor(this, TEXT("NewObject with empty name can't be used to create default subobjects (inside of UObject derived class constructor) as it produces inconsistent object names. Use ObjectInitializer.CreateDefaultSuobject<> instead."));
+
+    // Create the DesignTunables object.
+    // In UE4 C++, this is typically NewObject<UDBDDesignTunables>(this, classToSpawn).
+    // The disassembly calls the internal function directly.
+    // Arguments: Class, Outer, Name (None), Flags (RF_NoFlags), ...
+    // Disassembly: call StaticConstructObject_Internal
+    this->DesignTunables = (UDBDDesignTunables*)StaticConstructObject_Internal(
+        classToSpawn,
+        this,
+        NAME_None,
+        RF_NoFlags,
+        EInternalObjectFlags::None,
+        nullptr,
+        false,
+        nullptr
+    );
+}
+
+
+
+
+void UDBDGameInstance::StartGameEventSystem()
+{
+    // Check if the GameEventTracker already exists and is valid.
+    // Disassembly checks GUObjectArray flags directly (bit 29) to determine validity.
+    // In UE4 C++, IsValid() encapsulates this check.
+    if (this->GameEventTracker != nullptr && IsValid(this->GameEventTracker))
+    {
+        return;
+    }
+
+    // Ensure we are not inside a constructor.
+    // Disassembly: call FObjectInitializer::AssertIfInConstructor
+    FObjectInitializer::AssertIfInConstructor(this, TEXT("NewObject with empty name can't be used to create default subobjects (inside of UObject derived class constructor) as it produces inconsistent object names. Use ObjectInitializer.CreateDefaultSuobject<> instead."));
+
+    // Retrieve the static class for UGameEventTracker.
+    // Disassembly: call UGameEventTracker::GetPrivateStaticClass
+    UClass* trackerClass = UGameEventTracker::StaticClass();
+
+    // Create the new UGameEventTracker object.
+    // In standard UE4 C++, this is NewObject<UGameEventTracker>(this).
+    // The disassembly shows the internal call to StaticConstructObject_Internal.
+    // Arguments: Class, Outer (this), Name (None), Flags (RF_NoFlags), ...
+    // Disassembly: call StaticConstructObject_Internal
+    this->GameEventTracker = (UGameEventTracker*)StaticConstructObject_Internal(
+        trackerClass,
+        this,
+        NAME_None,
+        RF_NoFlags,
+        EInternalObjectFlags::None,
+        nullptr,
+        false,
+        nullptr
+    );
+}
+
+
+
+
+void UDBDGameInstance::StartGameInstance()
+{
+    // Call the base class implementation first.
+    // Disassembly: call UGameInstance::StartGameInstance
+    Super::StartGameInstance();
+
+    // Check if the WorldContext is valid and not a PIE (Play In Editor) world?
+    // Disassembly: cmp byte [rax], 0x3 -> je ... (Value 3 usually corresponds to EditorPreview or similiar, but logic checks != 3)
+    // Actually, checking WorldType != EWorldType::Editor (which is 3).
+    if (this->WorldContext != nullptr && this->WorldContext->WorldType != EWorldType::Editor)
+    {
+        // Initialize the Context System.
+        // Disassembly: call UDBDGameInstance::StartContextSystem
+        this->StartContextSystem();
+
+        // Initialize the Bloodweb Manager.
+        // Disassembly: call UDBDGameInstance::GetBloodWebManager -> call UBloodwebManager::Init
+        // Arguments: this (GameInstance), DesignTunables
+        this->GetBloodWebManager()->Init(this, this->DesignTunables);
+
+        // Retrieve the current Slate Application and the active top-level window.
+        // Disassembly: call FSlateApplication::GetActiveTopLevelWindow
+        if (FSlateApplication::IsInitialized())
+        {
+            TSharedPtr<SWindow> ActiveWindow = FSlateApplication::Get().GetActiveTopLevelWindow();
+
+            if (ActiveWindow.IsValid())
+            {
+                // Override the window's close request handler.
+                // The disassembly constructs a delegate binding to UDBDGameInstance::WindowCloseRequested.
+                // Disassembly: calls to SWindow::SetRequestDestroyWindowOverride with a bound delegate.
+                ActiveWindow->SetRequestDestroyWindowOverride(FRequestDestroyWindowOverride::CreateUObject(this, &UDBDGameInstance::WindowCloseRequested));
+            }
+        }
+
+        // Initialize the Analog Cursor (gamepad support).
+        // Disassembly: call UDBDGameInstance::InitAnalogCursor
+        this->InitAnalogCursor();
+    }
+}
+
+
+
+
+void UDBDGameInstance::StartKeyDisplayInfo()
+{
+    // Check if the KeyDisplayInfo object already exists.
+    // Disassembly: cmp qword [rcx+0x110], 0x0 -> jne ...
+    if (this->KeyDisplayInfo != nullptr)
+    {
+        return;
+    }
+
+    // Get the transient package to use as the outer.
+    // Disassembly: call GetTransientPackage
+    UPackage* transientPackage = GetTransientPackage();
+
+    // Ensure we are not inside a constructor.
+    // Disassembly: call FObjectInitializer::AssertIfInConstructor
+    FObjectInitializer::AssertIfInConstructor(transientPackage, TEXT("NewObject with empty name can't be used to create default subobjects (inside of UObject derived class constructor) as it produces inconsistent object names. Use ObjectInitializer.CreateDefaultSuobject<> instead."));
+
+    // Retrieve the static class for UDBDKeyDisplayInfo.
+    // Disassembly: call UDBDKeyDisplayInfo::GetPrivateStaticClass
+    UClass* displayInfoClass = UDBDKeyDisplayInfo::StaticClass();
+
+    // Create the new UDBDKeyDisplayInfo object.
+    // In standard UE4 C++, this is NewObject<UDBDKeyDisplayInfo>(GetTransientPackage()).
+    // The disassembly calls StaticConstructObject_Internal directly.
+    // Arguments: Class, Outer, Name, Flags, ...
+    // Disassembly: call StaticConstructObject_Internal
+    this->KeyDisplayInfo = (UDBDKeyDisplayInfo*)StaticConstructObject_Internal(
+        displayInfoClass,
+        transientPackage,
+        NAME_None,
+        RF_NoFlags,
+        EInternalObjectFlags::None,
+        nullptr,
+        false,
+        nullptr
+    );
+}
+
+
+
+
+void UDBDGameInstance::StartOfferingSequence()
+{
+    // Log the start of the sequence if verbosity permits (Log level 5+).
+    // Disassembly: cmp byte [rel GameFlow], 0x5
+    if (GameFlow.Verbosity >= 5)
+    {
+        UE_LOG(GameFlow, Log, TEXT("UDBDGameInstance::StartOfferingSequence"));
+    }
+
+    // Reset global/static spawn counters.
+    // Disassembly: mov dword [rel ATile::CurrentlySpawned], 0
+    ATile::CurrentlySpawned = 0;
+
+    // Clear the global Interactable spawn count array.
+    // Disassembly: ResizeTo(..., 0)
+    AInteractable::InteractableSpawnCount.Empty();
+
+    // Clear the result effects map.
+    // The large block of assembly (140277c71 - 140277cc3) manually iterating and setting -1 
+    // represents the inlined implementation of TMap/TSet::Empty() or Reset(), specifically clearing the hash table.
+    this->_resultEffects01.Empty();
+
+    // Setup spawn parameters.
+    // Disassembly: call FActorSpawnParameters::FActorSpawnParameters
+    FActorSpawnParameters SpawnParams;
+
+    // Spawn the Offering Sequence Manager actor.
+    // Disassembly: call AOfferingSequenceManager::GetPrivateStaticClass -> call UWorld::SpawnActor
+    AOfferingSequenceManager* SequenceManager = this->GetWorld()->SpawnActor<AOfferingSequenceManager>(
+        AOfferingSequenceManager::StaticClass(),
+        SpawnParams
+    );
+
+    // Store a weak pointer to the spawned manager.
+    // Disassembly: call FWeakObjectPtr::operator=
+    this->OfferingSequence = SequenceManager;
+
+    // Check if the spawn was successful.
+    // Disassembly: call FWeakObjectPtr::IsValid
+    if (this->OfferingSequence.IsValid())
+    {
+        // If not in a simulation flow, initialize the offering handler with the world.
+        // Disassembly: cmp byte [rsi+0x3e8], 0x0
+        if (!this->_simulationFlow)
+        {
+            // Disassembly: call UDBDGameInstance::GetOfferingHandler -> call UOfferingHandler::InitOffering
+            this->GetOfferingHandler()->InitOffering(this->GetWorld());
+        }
+
+        // Initialize the sequence manager.
+        // Disassembly: call AOfferingSequenceManager::InitSequence
+        // Arguments: Manager (this->OfferingSequence.Get()), GameInstance (this), OfferingHandler
+        this->OfferingSequence.Get()->InitSequence(this, this->GetOfferingHandler());
+    }
+}
+
+
+
+
+void UDBDGameInstance::StartPersistenData()
+{
+    // Check if the PersistentData object already exists.
+    // Disassembly: cmp qword [rcx+0x3b8], 0x0 -> jne ...
+    if (this->_persistentData != nullptr)
+    {
+        return;
+    }
+
+    // Get the transient package to use as the outer.
+    // Disassembly: call GetTransientPackage
+    UPackage* transientPackage = GetTransientPackage();
+
+    // Ensure we are not inside a constructor.
+    // Disassembly: call FObjectInitializer::AssertIfInConstructor
+    FObjectInitializer::AssertIfInConstructor(transientPackage, TEXT("NewObject with empty name can't be used to create default subobjects (inside of UObject derived class constructor) as it produces inconsistent object names. Use ObjectInitializer.CreateDefaultSuobject<> instead."));
+
+    // Retrieve the static class for UDBDPersistentData.
+    // Disassembly: call UDBDPersistentData::GetPrivateStaticClass
+    UClass* persistentDataClass = UDBDPersistentData::StaticClass();
+
+    // Create the new UDBDPersistentData object.
+    // In standard UE4 C++, this is NewObject<UDBDPersistentData>(GetTransientPackage()).
+    // The disassembly calls StaticConstructObject_Internal directly.
+    // Arguments: Class, Outer, Name, Flags, ...
+    // Disassembly: call StaticConstructObject_Internal
+    this->_persistentData = (UDBDPersistentData*)StaticConstructObject_Internal(
+        persistentDataClass,
+        transientPackage,
+        NAME_None,
+        RF_NoFlags,
+        EInternalObjectFlags::None,
+        nullptr,
+        false,
+        nullptr
+    );
+}
+
+
+
+
+void UDBDGameInstance::StartPlayerDataFacade()
+{
+    // Check if the PlayerDataFacade object already exists.
+    // Disassembly: cmp qword [rcx+0x3c0], 0x0 -> jne ...
+    if (this->_playerDataFacade != nullptr)
+    {
+        return;
+    }
+
+    // Get the transient package to use as the Outer for the new object.
+    // Disassembly: call GetTransientPackage
+    UPackage* transientPackage = GetTransientPackage();
+
+    // Ensure we are not inside a constructor.
+    // Disassembly: call FObjectInitializer::AssertIfInConstructor
+    FObjectInitializer::AssertIfInConstructor(transientPackage, TEXT("NewObject with empty name can't be used to create default subobjects (inside of UObject derived class constructor) as it produces inconsistent object names. Use ObjectInitializer.CreateDefaultSuobject<> instead."));
+
+    // Retrieve the static class for UPlayerDataStorageFacade.
+    // Disassembly: call UPlayerDataStorageFacade::GetPrivateStaticClass
+    UClass* facadeClass = UPlayerDataStorageFacade::StaticClass();
+
+    // Create the new UPlayerDataStorageFacade object.
+    // In standard UE4 C++, this is equivalent to NewObject<UPlayerDataStorageFacade>(GetTransientPackage()).
+    // The disassembly calls StaticConstructObject_Internal directly.
+    // Arguments: Class, Outer (transientPackage), Name (None), Flags (RF_NoFlags), ...
+    // Disassembly: call StaticConstructObject_Internal
+    this->_playerDataFacade = (UPlayerDataStorageFacade*)StaticConstructObject_Internal(
+        facadeClass,
+        transientPackage,
+        NAME_None,
+        RF_NoFlags,
+        EInternalObjectFlags::None,
+        nullptr,
+        false,
+        nullptr
+    );
+
+    // Initialize the facade with the current Game Instance.
+    // Disassembly: call UPlayerDataStorageFacade::Init
+    // Arguments: this (Facade object in rcx), GameInstance (this in rdx)
+    this->_playerDataFacade->Init(this);
+}
+
+
+
+
+void UDBDGameInstance::StartRegionFinder()
+{
+    // Check if the RegionFinder instance already exists.
+    // Disassembly: cmp qword [rcx+0x100], 0x0 -> jne ...
+    if (this->RegionFinder != nullptr)
+    {
+        return;
+    }
+
+    // Retrieve the target class from the member variable (offset 0xf8).
+    // Disassembly: mov rsi, qword [rdi+0xf8]
+    UClass* regionClass = this->RegionClass;
+
+    // Retrieve the static class of the base type URegionFinder for comparison.
+    // Disassembly: call URegionFinder::GetPrivateStaticClass
+    UClass* baseClass = URegionFinder::StaticClass();
+
+    UClass* classToSpawn = nullptr;
+
+    // Validate the class hierarchy.
+    // The disassembly performs a manual loop checking the SuperStruct chain to ensure
+    // 'regionClass' is a child of 'baseClass'.
+    if (regionClass != nullptr && baseClass != nullptr)
+    {
+        UClass* currentStruct = regionClass;
+
+        // Loop through the inheritance chain.
+        // Disassembly: cmp rcx, rax ... mov rcx, qword [rcx+0x30]
+        while (currentStruct != baseClass)
+        {
+            // SuperStruct is at offset 0x30 in UStruct/UClass.
+            currentStruct = currentStruct->GetSuperClass();
+
+            // If we reach the root without finding the base class, it's invalid.
+            if (currentStruct == nullptr)
+            {
+                goto ClassValidationFailed;
+            }
+        }
+
+        // If the loop terminates because currentStruct == baseClass, the validation passed.
+        classToSpawn = regionClass;
+    }
+
+ClassValidationFailed:
+    // Ensure we are not inside a constructor.
+    // Disassembly: call FObjectInitializer::AssertIfInConstructor
+    FObjectInitializer::AssertIfInConstructor(this, TEXT("NewObject with empty name can't be used to create default subobjects (inside of UObject derived class constructor) as it produces inconsistent object names. Use ObjectInitializer.CreateDefaultSuobject<> instead."));
+
+    // Create the RegionFinder object.
+    // In UE4 C++, this is typically NewObject<URegionFinder>(this, classToSpawn).
+    // The disassembly calls the internal function directly.
+    // Arguments: Class, Outer, Name (None), Flags (RF_NoFlags), ...
+    // Disassembly: call StaticConstructObject_Internal
+    this->RegionFinder = (URegionFinder*)StaticConstructObject_Internal(
+        classToSpawn,
+        this,
+        NAME_None,
+        RF_NoFlags,
+        EInternalObjectFlags::None,
+        nullptr,
+        false,
+        nullptr
+    );
+}
+
+
+
+
+AActor* UDBDGameInstance::TransitionToLighting(FName mapTheme, float interpolationTime)
+{
+    // Retrieve the current level lighting from the Lighting Helper.
+    // Disassembly: call UDBDGameInstance::GetLightingHelper -> mov rsi, qword [rax+0x28]
+    ABaseSky* currentLighting = this->GetLightingHelper()->_levelLighting;
+
+    // Get the World context.
+    // Disassembly: call qword [rax+0x108] (virtual GetWorld)
+    UWorld* world = this->GetWorld();
+
+    // Spawn the target lighting actor based on the map theme, without applying exposure changes yet.
+    // Disassembly: call ULightingHelper::SpawnLightingWithoutExposureChanges
+    ABaseSky* targetLighting = this->GetLightingHelper()->SpawnLightingWithoutExposureChanges(world, mapTheme);
+
+    // Get the lighting interpolator from the helper.
+    // Disassembly: call ULightingHelper::GetLightInterpolator
+    ULightingInterpolator* interpolator = this->GetLightingHelper()->GetLightInterpolator();
+
+    // Initialize the interpolation process.
+    // Disassembly: call ULightingInterpolator::Init
+    // Arguments: Interpolator (rcx), Source (rdx), Target (r8), Time (xmm3)
+    interpolator->Init(currentLighting, targetLighting, interpolationTime);
+
+    // Return the original (current) lighting actor, possibly as the context for the transition start.
+    return currentLighting;
+}
+
+
+
+
+void UDBDGameInstance::TravelToSplashScreen(uint32_t transitionId)
+{
+    // Validate transitionId.
+    // Disassembly: checks if (id - 0x29 > 1) and (id - 0x2c > 2) -> essentially range checking.
+    // 0x29 = 41, 0x2C = 44. Valid IDs seem to be 41, 42, 44, 45, 46.
+    bool bIsValidId = ((transitionId - 41) <= 1) || ((transitionId - 44) <= 2);
+    if (!bIsValidId)
+    {
+        return;
+    }
+
+    // Check if already traveling.
+    if (this->_travelingToSplash != false)
+    {
+        if (GameFlow.Verbosity >= 3)
+        {
+            UE_LOG(GameFlow, Warning, TEXT("UDBDGameInstance::TravelToSplashScreen: Already traveling to splash screen ( ignoring this attempt to travel"));
+        }
+        return;
+    }
+
+    // Check if showing a network error.
+    if (this->_showingNetworkError != false)
+    {
+        if (GameFlow.Verbosity >= 3)
+        {
+            UE_LOG(GameFlow, Warning, TEXT("UDBDGameInstance::TravelToSplashScreen: cannot travel since we're displaying a network error"));
+        }
+        return;
+    }
+
+    // Cancel matchmaking if active.
+    UOnlineSystemHandler* onlineHandler = this->GetOnlineSystemHandler();
+    if (onlineHandler != nullptr && onlineHandler->IsQuickmatchInProgress())
+    {
+        onlineHandler->CancelMatchmaking();
+    }
+
+    // Set traveling flag.
+    this->_travelingToSplash = true;
+
+    // Clear Overlay Contexts.
+    // Disassembly: call CTX::ContextGroup::RequestContextEnd
+    if (this->_contextSystem->m_OverlayContextGroup != nullptr)
+    {
+        this->_contextSystem->m_OverlayContextGroup->RequestContextEnd();
+    }
+
+    // Clear System Prompt Contexts.
+    // Disassembly: call CTX::ContextGroup::RequestContextEnd
+    if (this->_contextSystem->m_SystemPromptsContextGroup != nullptr)
+    {
+        this->_contextSystem->m_SystemPromptsContextGroup->RequestContextEnd();
+    }
+
+    // Request transition on the main GameFlow context group.
+    // Disassembly: call CTX::ContextGroup::RequestTransition
+    // Arg1: ContextGroup Ptr
+    // Arg2: Return shared_ptr address
+    // Arg3: 4 (Priority?)
+    // Arg4: transitionId
+    // Arg5: 1
+    if (this->_contextSystem->m_GameFlowContextGroup != nullptr)
+    {
+        this->_contextSystem->m_GameFlowContextGroup->RequestTransition(4, transitionId, 1);
+    }
+}
+
+
+
+
+void UDBDGameInstance::UnregisterSoundEventListener(FDelegateHandle handle)
+{
+    // Check if the SoundEventSystem pointer (offset 0x3c8) is valid
+    if (this->_soundEventSystem != nullptr)
+    {
+        // Forward the unregister request to the sound event system instance
+        this->_soundEventSystem->UnregisterSoundEventListener(handle); /* UNDEFINED ELEMENT */
+    }
+}
+
+
+
+
+void UDBDGameInstance::UpdatePlayerIds()
+{
+    // Retrieve the World pointer via virtual function call (offset 0x108 in vtable)
+    UWorld* World = this->GetWorld();
+
+    // Access the GameState from the World (offset 0x58)
+    AGameState* GameState = World->GameState;
+
+    // Create a local copy of the PlayerArray from the GameState
+    // The ASM manually resizes and uses memcpy, which is standard TArray copy behavior
+    TArray<APlayerState*> sortedPlayerArray = GameState->PlayerArray;
+
+    // Sort the local array using a custom predicate
+    // The specific logic of APlayerStateStartTimeSorter is not provided, but it orders players by start time
+    sortedPlayerArray.Sort(APlayerStateStartTimeSorter()); /* UNDEFINED ELEMENT */
+
+    // Loop 1: Invalidate IDs in the member PlayerIds array that are no longer present in the sorted active list
+    if (this->PlayerIds.Num() > 0)
+    {
+        for (int32 i = 0; i < this->PlayerIds.Num(); ++i)
+        {
+            int32 CurrentId = this->PlayerIds[i];
+            bool bIdFoundInSortedList = false;
+
+            // Search for the current ID in the sorted player list
+            for (APlayerState* PlayerState : sortedPlayerArray)
+            {
+                // Compare with APlayerState->PlayerId (offset 0x3a8)
+                if (PlayerState->PlayerId == CurrentId)
+                {
+                    bIdFoundInSortedList = true;
+                    break;
+                }
+            }
+
+            // If the ID was not found in the active list, clear the slot (set to 0)
+            if (bIdFoundInSortedList == false)
+            {
+                this->PlayerIds[i] = 0;
+            }
+        }
+    }
+
+    // Loop 2: Add new players from the sorted list into empty slots in PlayerIds
+    if (sortedPlayerArray.Num() > 0)
+    {
+        for (APlayerState* PlayerState : sortedPlayerArray)
+        {
+            int32 NewPlayerId = PlayerState->PlayerId; // Offset 0x3a8
+            bool bAlreadyExists = false;
+
+            // Check if this player is already tracked in PlayerIds
+            for (int32 ExistingId : this->PlayerIds)
+            {
+                if (ExistingId == NewPlayerId)
+                {
+                    bAlreadyExists = true;
+                    break;
+                }
+            }
+
+            // If the player is not tracked, find the first empty slot (0) and add them
+            if (bAlreadyExists == false)
+            {
+                if (this->PlayerIds.Num() > 0)
+                {
+                    for (int32 j = 0; j < this->PlayerIds.Num(); ++j)
+                    {
+                        // Check for an empty slot
+                        if (this->PlayerIds[j] == 0)
+                        {
+                            this->PlayerIds[j] = NewPlayerId;
+                            break; // Stop after assigning to the first available slot
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // The local sortedPlayerArray is destroyed here, calling FMemory::Free implicitly as seen in the epilogue
+}
+
+
+
+
+void UDBDGameInstance::WindowCloseRequested(const TSharedRef<SWindow>& window)
+{
+    // Check if the OnCloseRequested delegate is bound (DelegateSize != 0)
+    // The assembly performs manual pointer arithmetic to resolve the IDelegateInstance*
+    if (this->_onCloseRequested.IsBound())
+    {
+        // Access the underlying delegate instance interface
+        // Note: The pointer arithmetic in ASM resolves the 'secondary data' or inline allocator
+        auto* DelegateInstance = this->_onCloseRequested.GetDelegateInstance(); /* UNDEFINED ELEMENT: Accessing internal interface */
+
+        if (DelegateInstance != nullptr)
+        {
+            // First virtual function call [vtable + 0x38]
+            // In the assembly, 'window' (rdx) is passed to this call as it hasn't been clobbered yet.
+            // This function likely checks a condition or pre-validates the request.
+            bool bConditionMet = DelegateInstance->/* UNDEFINED VTABLE: offset 0x38 */(window);
+
+            if (bConditionMet)
+            {
+                // Re-validate the delegate instance (double-check pattern in ASM)
+                if (this->_onCloseRequested.IsBound())
+                {
+                    DelegateInstance = this->_onCloseRequested.GetDelegateInstance();
+
+                    // Second virtual function call [vtable + 0x60]
+                    // Here 'rdx' is clobbered by the pointer resolution, implying this call takes no arguments.
+                    // It returns a boolean indicating if the close request was handled.
+                    bool bHandled = DelegateInstance->/* UNDEFINED VTABLE: offset 0x60 */();
+
+                    // If the delegate returned true, we return immediately (preventing the default close)
+                    if (bHandled)
+                    {
+                        return;
+                    }
+                }
+            }
+        }
+    }
+
+    // Default behavior: If delegate is unbound, or returned false, close all windows immediately
+    // Uses the global FSlateApplication instance
+    if (FSlateApplication::IsInitialized())
+    {
+        // Tail call in assembly
+        FSlateApplication::Get().CloseAllWindowsImmediately();
+    }
+}
