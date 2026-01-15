@@ -1,39 +1,3 @@
-void ADBDGame_Start::ADBDGame_Start(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer) // Calls AGameMode::AGameMode (0x14023B959)
-{
-    // The ASM manually initializes the VTable at 0x14023B965, which corresponds to the C++ constructor body entry.
-
-    // Initialize primitive types. 
-    // The ASM zeroes out registers and moves them into offsets 0x4A0-0x500.
-    // While the Delegate (OnDBDInitComplete) and FDelegateHandles have their own constructors,
-    // the code below explicitly sets the simple byte flags as seen in _D and _I.
-
-    // Offset: 0x4D0
-    this->_loadProgress = 0; // false
-
-    // Offset: 0x4D2
-    this->_deferredError = 0; // false
-
-    // Note: The DelegateHandles (_timeoutHandle, _generateAuthTicketHandle, etc.) 
-    // are zero-initialized by the ASM (xor eax, eax -> mov [rbx+Offset]).
-    // In standard C++, their default constructors handle this invalidation.
-
-    /* Configuration of GameMode standard classes.
-       The ASM calls GetPrivateStaticClass for specific custom classes and assigns them
-       to the inherited AGameMode members PlayerControllerClass (0x3F0) and PlayerStateClass (0x408).
-    */
-
-    // Address: 0x14023B9C0
-    // Sets this->PlayerControllerClass to ADBDPlayerControllerBase::StaticClass()
-    this->PlayerControllerClass = ADBDPlayerControllerBase::StaticClass();
-
-    // Address: 0x14023B9D3
-    // Sets this->PlayerStateClass to ADBDPlayerState::StaticClass()
-    this->PlayerStateClass = ADBDPlayerState::StaticClass();
-}
-
-
-
-
 void ADBDGame_Start::AuthTicketReceived(AuthenticatedPresenceBase* Auth, bool Authority)
 {
     // Check if we have authority (ASM: test Authority, Authority)
