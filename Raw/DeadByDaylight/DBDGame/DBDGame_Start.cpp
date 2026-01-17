@@ -46,7 +46,7 @@ void ADBDGame_Start::AuthTicketReceived(AuthenticatedPresenceBase* Auth, bool Au
     bool bCheck31 = CheckFunc31(InterfacePtr);
     bool bCheck38 = CheckFunc38(InterfacePtr);
 
-    if (bCheck20 == false || bCheck31 == true || bCheck38 == true)
+    if (bCheck20 == false || bCheck31 || bCheck38)
     {
         // Initialization Failed
         // Enum value 7 inferred from ASM (mov dl, 7)
@@ -171,11 +171,11 @@ void ADBDGame_Start::EACInitComplete(bool success)
 
         // Perform an optimized IsA check using ClassTree indices (UE4 internal logic)
         // Based on _D: sub edx, [rax+88h] / cmp edx, [rax+8Ch]
-        if (GameInstance->IsA(DBDGameInstanceClass) == true)
+        if (GameInstance->IsA(DBDGameInstanceClass))
         {
             // Check if the GameInstance object is still valid and not being destroyed
             // Based on _D: test al, 1 (checking FUObjectItem flags)
-            if (GUObjectArray.IsValidIndex(GameInstance->InternalIndex) == true)
+            if (GUObjectArray.IsValidIndex(GameInstance->InternalIndex))
             {
                 // Accessing EasyAntiCheat component (assumed at offset 0x500 of GameInstance based on _P/_I)
                 /* UNDEFINED ELEMENT */
@@ -184,7 +184,7 @@ void ADBDGame_Start::EACInitComplete(bool success)
                 if (EACComponent)
                 {
                     // Verify EACComponent object validity in GUObjectArray
-                    if (GUObjectArray.IsValidIndex(EACComponent->InternalIndex) == true)
+                    if (GUObjectArray.IsValidIndex(EACComponent->InternalIndex))
                     {
                         // Remove the initialization delegate now that it has fired
                         // Based on _D: call TBaseMulticastDelegate::RemoveDelegateInstance
@@ -197,7 +197,7 @@ void ADBDGame_Start::EACInitComplete(bool success)
     }
 
     // Branching logic based on initialization success
-    if (success == true)
+    if (success)
     {
         // EAC was successful, proceed to profile loading
         this->InitPlayerProfile();
@@ -251,7 +251,7 @@ void ADBDGame_Start::GameInitComplete(ELoadCompleteState completionState)
 
             // The ASM also checks GUObjectArray flags (0x20000000) to ensure the object is not Unreachable/PendingKill.
             // IsValid() covers these checks.
-            if (DBDGameInstance && IsValid(DBDGameInstance) == true)
+            if (DBDGameInstance && IsValid(DBDGameInstance))
             {
                 // Retrieve persistent data for the local player
                 FPlayerPersistentData* PersistentData = DBDGameInstance->GetLocalPlayerPersistentData();
@@ -300,7 +300,7 @@ void ADBDGame_Start::GameInitComplete(ELoadCompleteState completionState)
     }
 
     // Broadcast the completion delegate
-    if (this->OnDBDInitComplete.IsBound() == true)
+    if (this->OnDBDInitComplete.IsBound())
     {
         this->OnDBDInitComplete.Broadcast(completionState, this->_loadProgress);
     }
@@ -466,7 +466,7 @@ void ADBDGame_Start::InitPlayerProfile()
     // This is a custom member variable check not standard to UE4.
     bool bControllerFlag = (*(uint8*)((uint8*)LocalPlayerController + 0x140) & 0x4) != 0;
 
-    if (bControllerFlag == true)
+    if (bControllerFlag)
     {
         return;
     }
@@ -541,7 +541,7 @@ void ADBDGame_Start::InitPlayerProfile()
         bool bIsLoadingProfile = StorageFacade->_isLoadingFile;
 
         // Log a warning if a load is ongoing and Verbosity is high enough.
-        if (bIsLoadingProfile == true)
+        if (bIsLoadingProfile)
         {
             // Check Log Verbosity (GameFlow category, Level 3/Warning).
             if (UE_LOG_ACTIVE(GameFlow, Warning))
@@ -667,7 +667,7 @@ void ADBDGame_Start::OnPlayerCurrenciesLoadComplete(bool success)
         // Ensure the cast was successful and the object is valid (not pending kill)
         if (DBDGameInstance)
         {
-            if (IsValid(DBDGameInstance) == true)
+            if (IsValid(DBDGameInstance))
             {
                 // Get the local Player Controller
                 ADBDPlayerControllerBase* LocalDBDPlayerController = DBDGameInstance->GetLocalDBDPlayerController();
@@ -676,7 +676,7 @@ void ADBDGame_Start::OnPlayerCurrenciesLoadComplete(bool success)
                 if (LocalDBDPlayerController)
                 {
                     // Ensure the Player Controller is valid
-                    if (IsValid(LocalDBDPlayerController) == true)
+                    if (IsValid(LocalDBDPlayerController))
                     {
                         // Check an internal state flag on the Player Controller (Offset 0x140, bit 4)
                         // If the flag is set (jne jump in disassembly), we skip the unbinding process.
