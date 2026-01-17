@@ -113,7 +113,7 @@ void ADBDGame_Start::AuthTicketReceived(AuthenticatedPresenceBase* Auth, bool Au
 
     // Check flags on the passed Auth parameter
     // ASM: mov eax, [Auth+8]; shr eax, 1Dh; test al, 1
-    if (Auth != nullptr && Auth->IsPendingKill())
+    if (Auth && Auth->IsPendingKill())
     {
         this->GameInitComplete(FailedEAC);
         return;
@@ -164,7 +164,7 @@ void ADBDGame_Start::EACInitComplete(bool success)
     UGameInstance* GameInstance = this->GetGameInstance();
 
     // Verify GameInstance validity
-    if (GameInstance != nullptr)
+    if (GameInstance)
     {
         // Get the specific class for DBD Game Instance for type checking
         UClass* DBDGameInstanceClass = UDBDGameInstance::StaticClass();
@@ -181,7 +181,7 @@ void ADBDGame_Start::EACInitComplete(bool success)
                 /* UNDEFINED ELEMENT */
                 UDBDEasyAntiCheat* EACComponent = GameInstance->_eac;
 
-                if (EACComponent != nullptr)
+                if (EACComponent)
                 {
                     // Verify EACComponent object validity in GUObjectArray
                     if (GUObjectArray.IsValidIndex(EACComponent->InternalIndex) == true)
@@ -221,7 +221,7 @@ void ADBDGame_Start::GameInitComplete(ELoadCompleteState completionState)
     // Determine the correct TimerManager.
     // The disassembly checks the GameInstance first, then falls back to the World's TimerManager.
     FTimerManager* TimerManager = nullptr;
-    if (World->GetGameInstance() != nullptr)
+    if (World->GetGameInstance())
     {
         TimerManager = &World->GetGameInstance()->GetTimerManager();
     }
@@ -243,7 +243,7 @@ void ADBDGame_Start::GameInitComplete(ELoadCompleteState completionState)
         // Retrieve the Game Instance as a generic Actor -> GameInstance cast
         UGameInstance* GenericGameInstance = this->GetGameInstance();
 
-        if (GenericGameInstance != nullptr)
+        if (GenericGameInstance)
         {
             // The ASM performs a raw ClassTreeIndex check here to verify inheritance.
             // In standard C++, this is equivalent to checking if the instance is of type UDBDGameInstance.
@@ -251,12 +251,12 @@ void ADBDGame_Start::GameInitComplete(ELoadCompleteState completionState)
 
             // The ASM also checks GUObjectArray flags (0x20000000) to ensure the object is not Unreachable/PendingKill.
             // IsValid() covers these checks.
-            if (DBDGameInstance != nullptr && IsValid(DBDGameInstance) == true)
+            if (DBDGameInstance && IsValid(DBDGameInstance) == true)
             {
                 // Retrieve persistent data for the local player
                 FPlayerPersistentData* PersistentData = DBDGameInstance->GetLocalPlayerPersistentData();
 
-                if (PersistentData != nullptr)
+                if (PersistentData)
                 {
                     // Validate the data. Second argument in ASM is 0 (false).
                     PersistentData->ValidateData(false);
@@ -480,10 +480,10 @@ void ADBDGame_Start::InitPlayerProfile()
     // but the assembly performs pointer arithmetic on this address.
     uint8* PersistentDataManager = *(uint8**)((uint8*)DBDGameInstance + 0x3B8);
 
-    if (PersistentDataManager != nullptr)
+    if (PersistentDataManager)
     {
         // If PlayerState is valid, copy data to the Persistent Data Manager.
-        if (DBDPlayerState != nullptr)
+        if (DBDPlayerState)
         {
             // Call UDBDPersistentData::CopyData.
             // Argument 2: Pointer to destination/source at offset 0x168 of PersistentDataManager.
@@ -496,7 +496,7 @@ void ADBDGame_Start::InitPlayerProfile()
     }
 
     // Handle UniqueNetId and Online Presence.
-    if (DBDPlayerState != nullptr)
+    if (DBDPlayerState)
     {
         // Reference to the UniqueNetId from the PlayerState.
         // The assembly constructs a FUniqueNetIdRepl on the stack here.
@@ -529,7 +529,7 @@ void ADBDGame_Start::InitPlayerProfile()
     // We treat this as a generic pointer to access the delegate and members.
     UPlayerDataStorageFacade* StorageFacade = DBDGameInstance->_playerDataFacade;
 
-    if (StorageFacade != nullptr)
+    if (StorageFacade)
     {
         // Bind the OnPlayerProfileLoadComplete function to the delegate in StorageFacade.
         // Assembly calls ??$AddUObject@... (Delegate AddUObject).
@@ -659,13 +659,13 @@ void ADBDGame_Start::OnPlayerCurrenciesLoadComplete(bool success)
     UGameInstance* GameInstance = this->GetGameInstance();
 
     // Check if GameInstance is valid before proceeding
-    if (GameInstance != nullptr)
+    if (GameInstance)
     {
         // Cast to the project-specific GameInstance
         UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(GameInstance);
 
         // Ensure the cast was successful and the object is valid (not pending kill)
-        if (DBDGameInstance != nullptr)
+        if (DBDGameInstance)
         {
             if (IsValid(DBDGameInstance) == true)
             {
@@ -673,7 +673,7 @@ void ADBDGame_Start::OnPlayerCurrenciesLoadComplete(bool success)
                 ADBDPlayerControllerBase* LocalDBDPlayerController = DBDGameInstance->GetLocalDBDPlayerController();
 
                 // Check if the Player Controller exists
-                if (LocalDBDPlayerController != nullptr)
+                if (LocalDBDPlayerController)
                 {
                     // Ensure the Player Controller is valid
                     if (IsValid(LocalDBDPlayerController) == true)
@@ -707,7 +707,7 @@ void ADBDGame_Start::OnPlayerProfileLoadComplete(uint8_t success, const FString&
     // Retrieve the Game Instance to access global managers
     UGameInstance* GameInstance = this->GetGameInstance();
 
-    if (GameInstance != nullptr)
+    if (GameInstance)
     {
         UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(GameInstance);
 
