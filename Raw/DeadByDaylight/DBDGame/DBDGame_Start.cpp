@@ -776,28 +776,28 @@ void ADBDGame_Start::OnPlayerProfileLoadComplete(uint8_t success, const FString&
 
 void ADBDGame_Start::SendMirrorsAnalytics(uint8_t success, FString responseString, FDateTime callTime)
 {
-    // Создаем массив атрибутов (то, что в логе Original_7)
+    // Create an array of attributes (referred to as Original_7 in logs)
     TArray<FAnalyticsEventAttribute> attributes;
 
-    // Параметр Success_i (адрес 140272281)
+    // Parameter Success_i (address 140272281)
     attributes.Add(FAnalyticsEventAttribute(TEXT("Success_i"), (int32_t)success));
 
-    // Если неудача, добавляем Response_sz (адрес 1402722ac)
+    // If failure, add Response_sz (address 1402722ac)
     if (!success)
     {
         attributes.Add(FAnalyticsEventAttribute(TEXT("Response_sz"), responseString));
     }
 
-    // Вычисление разницы времени (адрес 140272352)
-    // % 0x3e8 в логе — это millisToRespond % 1000
+    // Calculate time difference (address 140272352)
+    // % 0x3e8 in the log is millisToRespond % 1000
     int32_t millisToRespond = (int32_t)((FDateTime::UtcNow().GetTicks() - callTime.GetTicks()) / 10000);
     attributes.Add(FAnalyticsEventAttribute(TEXT("MillisecondsToRespond_i"), millisToRespond % 1000));
 
-    // Отправка события (адрес 1402723da)
+    // Send event (address 1402723da)
     UBHVRAnalytics::RecordEvent(TEXT("MirrorsLoginRequest"), attributes);
 
-    // В логе в конце принудительно чистится responseString (140272442)
-    // В обычном коде это сделает деструктор FString в конце функции.
+    // In the log, responseString is forcibly cleared at the end (140272442)
+    // In standard code, the FString destructor handles this at the end of the function.
 }
 
 
@@ -805,19 +805,19 @@ void ADBDGame_Start::SendMirrorsAnalytics(uint8_t success, FString responseStrin
 
 void ADBDGame_Start::SetLoadProgress(ELoadProgress newProgress)
 {
-    // Устанавливаем новое значение прогресса
+    // Set the new progress value
     this->_loadProgress = newProgress;
 
-    // Проверяем уровень детализации логов категории GameFlow
-    // 5 соответствует уровню "Verbose" в Unreal Engine
+    // Check the verbosity level of the GameFlow log category
+    // 5 corresponds to the "Verbose" level in Unreal Engine
     if (GameFlow.Verbosity < Verbose)
         return;
 
-    // Преобразуем значение Enum в строку (например, ELoadProgress::Connecting -> "Connecting")
+    // Convert Enum value to string (e.g., ELoadProgress::Connecting -> "Connecting")
     FString progressString = Enum::ToString(newProgress);
 
-    // Вывод в лог через внутреннюю функцию Unreal Engine
-    // Аналог стандартного UE_LOG(LogGameFlow, Verbose, TEXT("[GameInit] New Init Progress: %s"), *progressString)
+    // Output to log via internal Unreal Engine function
+    // Equivalent to standard UE_LOG(LogGameFlow, Verbose, TEXT("[GameInit] New Init Progress: %s"), *progressString)
     UE_LOG(LogGameFlow, Verbose, TEXT("[GameInit] New Init Progress: %s"), *progressString);
 }
 
@@ -826,19 +826,26 @@ void ADBDGame_Start::SetLoadProgress(ELoadProgress newProgress)
 
 void ADBDGame_Start::StartPlay(class ADBDGame_Start* this)
 {
+    // Call the parent class implementation
     Super::StartPlay();
 
+    // Retrieve the current GameInstance
     UGameInstance* rax = this->GetGameInstance();
-    
+
+    // Check if the GameInstance is valid
     if (IsValid(rax))
     {
+        // Cast to the specific UDBDGameInstance class
         UDBDGameInstance* rbx = Cast<UDBDGameInstance>(rax);
 
-        if(IsValid(rbx))
+        // Check if the cast was successful (rbx is not null)
+        if (IsValid(rbx))
         {
+            // Initialize procedural generation data
             rbx->InitProceduralGenerationData();
         }
     }
 
+    // Check the status of the Online Subsystem
     DBDOnlineUtils::CheckOnlineSubsystem();
 }
