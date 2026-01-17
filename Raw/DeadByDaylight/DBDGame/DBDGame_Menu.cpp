@@ -159,7 +159,7 @@ void ADBDGame_Menu::SetMatineeIntro()
         // .text:000000014027353F jnz loc_1402735EF
         // Offset 0x140 corresponds to AActor bitfields. Bit 4 corresponds to bAutoDestroyWhenFinished.
         // The code jumps to the end (skips assignment) if this bit is set.
-        if (MatineeActor->bAutoDestroyWhenFinished == true)
+        if (MatineeActor->bAutoDestroyWhenFinished)
         {
             continue;
         }
