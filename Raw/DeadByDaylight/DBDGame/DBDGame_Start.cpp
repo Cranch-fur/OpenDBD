@@ -830,19 +830,19 @@ void ADBDGame_Start::StartPlay(class ADBDGame_Start* this)
     Super::StartPlay();
 
     // Retrieve the current GameInstance
-    UGameInstance* rax = this->GetGameInstance();
+    UGameInstance* GameInstance = this->GetGameInstance();
 
     // Check if the GameInstance is valid
-    if (IsValid(rax))
+    if (IsValid(GameInstance))
     {
         // Cast to the specific UDBDGameInstance class
-        UDBDGameInstance* rbx = Cast<UDBDGameInstance>(rax);
+        UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(GameInstance);
 
         // Check if the cast was successful (rbx is not null)
-        if (IsValid(rbx))
+        if (IsValid(DBDGameInstance))
         {
             // Initialize procedural generation data
-            rbx->InitProceduralGenerationData();
+            DBDGameInstance->InitProceduralGenerationData();
         }
     }
 
