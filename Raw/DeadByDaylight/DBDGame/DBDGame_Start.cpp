@@ -860,7 +860,7 @@ void ADBDGame_Start::SetLoadProgress(ELoadProgress newProgress)
 
 
 
-void ADBDGame_Start::StartPlay(class ADBDGame_Start* this)
+void ADBDGame_Start::StartPlay()
 {
     Super::StartPlay();
 
