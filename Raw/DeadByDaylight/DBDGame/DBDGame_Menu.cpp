@@ -34,20 +34,20 @@ void ADBDGame_Menu::PostInitializeComponents()
 
     // .text:000000014026D9D8 ja loc_14026DAD4
     // If the Cast failed, DBDGameInstance will be nullptr.
-    if (DBDGameInstance != nullptr)
+    if (DBDGameInstance)
     {
         // .text:000000014026DA10 mov r8, [rdi+3B0h]
         // Accessing member variable '_contextSystem' at offset 0x3B0.
         // IDA Pseudo: contextSystem = GameInstance->_contextSystem;
         // Note: The pseudo code implies UDBDGameInstance has a member _contextSystem.
-        if (DBDGameInstance->_contextSystem != nullptr)
+        if (DBDGameInstance->_contextSystem)
         {
             // .text:000000014026DA3F mov r10, [r8+90h]
             // Accessing member variable 'm_OnlineSystemHandler' from the context system at offset 0x90.
             // IDA Pseudo: m_OnlineSystemHandler = contextSystem->m_OnlineSystemHandler;
             UOnlineSystemHandler* OnlineSystemHandler = DBDGameInstance->_contextSystem->m_OnlineSystemHandler;
 
-            if (OnlineSystemHandler != nullptr)
+            if (OnlineSystemHandler)
             {
                 // .text:000000014026DA94 call ?EndSessionOnReturnToMenu@UOnlineSystemHandler@@QEAAXXZ
                 // Mangled name implies: public: void __cdecl UOnlineSystemHandler::EndSessionOnReturnToMenu(void)
@@ -60,7 +60,7 @@ void ADBDGame_Menu::PostInitializeComponents()
         // IDA Pseudo: persistentData = GameInstance->_persistentData;
         UDBDPersistentData* PersistentData = DBDGameInstance->_persistentData;
 
-        if (PersistentData != nullptr)
+        if (PersistentData)
         {
             // .text:000000014026DACF call ?ClearNonLocalPlayerPersistentData@UDBDPersistentData@@QEAAXXZ
             // Mangled name implies: public: void __cdecl UDBDPersistentData::ClearNonLocalPlayerPersistentData(void)
@@ -105,7 +105,7 @@ void ADBDGame_Menu::PostSeamlessTravel()
     // VTable call at offset 0x108 corresponds to GetWorld().
     UWorld* World = this->GetWorld();
 
-    if (World != nullptr)
+    if (World)
     {
         // .text:000000014026E57A call ?GetPlayerControllerIterator@UWorld...
         // .text:000000014026E583 ... loop logic ...
@@ -282,7 +282,7 @@ void ADBDGame_Menu::Tick(float DeltaSeconds)
 
             // .text:0000000140279627 call qword ptr [rax+5B0h]
             // Play the loop sequence.
-            if (this->_matineeLoopActor != nullptr)
+            if (this->_matineeLoopActor)
             {
                 this->_matineeLoopActor->Play();
             }
@@ -347,7 +347,7 @@ void ADBDGame_Menu::UpdatePlayerData(APlayerController* PlayerController)
         // Access UDBDGameInstance->_persistentData (Offset 0x3B8).
         UDBDPersistentData* PersistentData = DBDGameInstance->_persistentData;
 
-        if (PersistentData != nullptr)
+        if (PersistentData)
         {
             // .text:000000014027B9F8 call ?ResetPreviousValues@FPlayerPersistentData@@QEAAXXZ
             // Reset cached values in the local persistent data struct.
@@ -380,7 +380,7 @@ void ADBDGame_Menu::UpdatePlayerData(APlayerController* PlayerController)
         {
             // .text:000000014027BA79 mov this, [r14+3C0h]
             // Access UDBDGameInstance->_playerDataFacade (Offset 0x3C0).
-            if (DBDGameInstance->_playerDataFacade != nullptr)
+            if (DBDGameInstance->_playerDataFacade)
             {
                 // .text:000000014027BA82 call ?ConditionalReloadProfile@UPlayerDataStorageFacade@@QEAAX_N@Z
                 // Trigger profile reload. Arg (dl) is 1 (true).
