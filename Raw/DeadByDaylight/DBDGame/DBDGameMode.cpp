@@ -1,59 +1,3 @@
-ADBDGameMode::ADBDGameMode(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer), kGameLevelLoadedMaxTime(540.0f) // Const member must be initialized in the initializer list
-{
-    // Initialize StartWithSlasher to true and EscapeOpened to false.
-    // The disassembly writes 1 (word) to offset 0x458, setting byte 0x458 to 1 and 0x459 to 0.
-    this->StartWithSlasher = true;
-    this->EscapeOpened = false;
-
-    // Initialize proceduralMode and gameRestarted to false.
-    // The disassembly writes 0 (word) to offset 0x470.
-    this->_proceduralMode = false;
-    this->_gameRestarted = false;
-
-    // Initialize the first element of currentLevelLoadingStep array.
-    this->_currentLevelLoadingStep = WaitingForPlayersToBeSpawned;
-
-    // Initialize the debug camper index.
-    this->_debugCurrentCamperIndex = 0;
-
-    this->_gameLevelLoadingTimeOutTimer = FDBDTimer();
-    // FDBDTimer _gameLevelLoadingTimeOutTimer is constructed here.
-    // In C++, member constructors are usually called implicitly or via the initializer list.
-    // The disassembly shows explicit calls here due to MSVC implementation details.
-
-    // Initialize killer goal points.
-    this->_killerGoalPoints = 0;
-
-    // Initialize DC check response flag.
-    this->_dcCheckNeedsResponse = false;
-
-    // Initialize network check fail count.
-    this->_networkCheckFailCount = 0;
-
-    // FDBDTimer _networkCheckFailTimer is constructed here.
-
-    this->_networkCheckFailTimer = FDBDTimer();
-
-    // Initialize network check index.
-    this->_networkCheckIndex = 0;
-
-    // Initialize network check results.
-    this->_networkCheckResults = 0;
-
-    // Set the PlayerStateClass to use the custom ADBDPlayerState.
-    // Corresponds to ADBDPlayerState::GetPrivateStaticClass(L"/Script/DeadByDaylight")
-    this->PlayerStateClass = ADBDPlayerState::StaticClass();
-
-    // Reset the level loading timer using the constant max time defined in the initializer list.
-    this->_gameLevelLoadingTimeOutTimer.Reset(this->kGameLevelLoadedMaxTime);
-
-    // Initialize the timeout sent flag.
-    this->_levelLoadingTimeoutSent = false;
-}
-
-
-
-
 void ADBDGameMode::AddToKillerGoalCounter(FName tunableValue, FUniqueNetIdRepl *id, KillerGoalCountStrategy type)
 {
     // Retrieve the GameState and Cast it to the specific ADBDGameState class
@@ -64,7 +8,7 @@ void ADBDGameMode::AddToKillerGoalCounter(FName tunableValue, FUniqueNetIdRepl *
     UDBDGameInstance *DBDGameInstance = Cast<UDBDGameInstance>(this->GetGameInstance());
 
     // Verify that both the GameInstance and GameState are valid (not nullptr and not pending kill)
-    if (DBDGameInstance != nullptr && DBDGameState != nullptr)
+    if (DBDGameInstance && DBDGameState)
     {
         // Get the tunable value (badge configuration) using the utility class
         float TunableFloatValue = UDBDUtilities::GetBadgeTunableValue(tunableValue);
@@ -83,7 +27,7 @@ void ADBDGameMode::AddToKillerGoalCounter(FName tunableValue, FUniqueNetIdRepl *
         FCachedPlayerScoreData *ScoreData = PersistentDataManager->GetPlayerScoreCache(PlayerIdCopy);
 
         // Check if the score data was successfully retrieved
-        if (ScoreData != nullptr)
+        if (ScoreData)
         {
             // Check the strategy type. In disassembly, it compares r15b (type) with 0x1.
             // Assuming 0x1 corresponds to a "Set" or "Replace" strategy.
@@ -128,7 +72,7 @@ bool ADBDGameMode::CanSpectate_Implementation(APlayerController *Viewer, APlayer
     ADBDPlayerState *DbDViewerState = Cast<ADBDPlayerState>(Viewer->PlayerState);
 
     // Ensure the Viewer's PlayerState is valid before accessing memory.
-    if (DbDViewerState != nullptr)
+    if (DbDViewerState)
     {
         // If the Viewer is a Slasher, they cannot spectate.
         EPlayerRole ViewerRole = DbDViewerState->GameRole;
@@ -146,7 +90,7 @@ bool ADBDGameMode::CanSpectate_Implementation(APlayerController *Viewer, APlayer
             ADBDPlayerState *ViewerStateCheck = DbDViewerController->GetDBDPlayerState();
 
             // Check if this retrieved state is valid.
-            if (ViewerStateCheck != nullptr)
+            if (ViewerStateCheck)
             {
                 EPlayerRole ViewerCheckRole = ViewerStateCheck->GameRole;
                 if (ViewerCheckRole != VE_Observer)
@@ -225,7 +169,7 @@ void ADBDGameMode::CheckGameEnded()
 
     // Check if the "IgnoreGameEndConditions" console variable is set
     static IConsoleVariable *CVarIgnoreGameEndConditions = IConsoleManager::Get().FindConsoleVariable(TEXT("IgnoreGameEndConditions"));
-    if (CVarIgnoreGameEndConditions != nullptr && CVarIgnoreGameEndConditions->GetInt() != 0)
+    if (CVarIgnoreGameEndConditions && CVarIgnoreGameEndConditions->GetInt() != 0)
     {
         return;
     }
@@ -240,7 +184,7 @@ void ADBDGameMode::CheckGameEnded()
 
     // Verify Plugin availability (VTable + 0xA0)
     bool bPluginAvailable = false;
-    if (PresencePlugin != nullptr)
+    if (PresencePlugin)
     {
         // 0xA0 is likely "IsAvailable()" or similar
         bPluginAvailable = PresencePlugin->IsConnected();
@@ -293,7 +237,7 @@ void ADBDGameMode::CheckGameEnded()
             }
 
             // If the player is active, we check their role to determine if game continues
-            if (bIsPlayerActive == true)
+            if (bIsPlayerActive)
             {
                 // Get Player Role (0x750)
                 EPlayerRole PlayerRole = DbdPlayerState->GameRole; /* UNDEFINED ELEMENT */
@@ -329,7 +273,7 @@ void ADBDGameMode::CheckGameEnded()
     DbdGameState->IsGameEnded = bShouldEndGame;
 
     // If the game has ended, handle the logic
-    if (bShouldEndGame == true)
+    if (bShouldEndGame)
     {
         this->HandleMatchEnded(false);
     }
@@ -374,7 +318,7 @@ void ADBDGameMode::CheckLoadoutAndThemeStatus(UDBDGameInstance *instance)
 
     // Mark the level as loaded in the GameState
     ADBDGameState *CurrentGameState = instance->GetGameState();
-    if (CurrentGameState != nullptr)
+    if (CurrentGameState)
     {
         CurrentGameState->SetGameLevelLoaded();
     }
@@ -392,7 +336,7 @@ void ADBDGameMode::CheckLoadoutAndThemeStatus(UDBDGameInstance *instance)
     // Note: Re-fetching GameState via Helper as per disassembly
     CurrentGameState = instance->GetGameState();
 
-    if (CurrentGameState != nullptr && CurrentGameState->Role == ROLE_Authority)
+    if (CurrentGameState && CurrentGameState->Role == ROLE_Authority)
     {
         // Calculate survivors: (Total - Observers) - 1.
         // The "- 1" accounts for the Killer, who is in the player array but not a survivor.
@@ -413,7 +357,7 @@ void ADBDGameMode::CheckLoadoutAndThemeStatus(UDBDGameInstance *instance)
     // --- Server Authority Logic: Level Ready ---
     CurrentGameState = instance->GetGameState();
 
-    if (CurrentGameState != nullptr && CurrentGameState->Role == ROLE_Authority)
+    if (CurrentGameState && CurrentGameState->Role == ROLE_Authority)
     {
         // Set flag that level is ready to play (Offset 0x6ee)
         CurrentGameState->LevelReadyToPlay = true;
@@ -442,23 +386,23 @@ void ADBDGameMode::CheckMapLoadingStatus(float deltaSeconds)
     bool bIsStateValid = false;
 
     // Proceed only if the generic GameInstance exists and is successfully cast to UDBDGameInstance
-    if (DBDGameInstance != nullptr)
+    if (DBDGameInstance)
     {
         World *WorldContext = GetWorld();
 
-        if (WorldContext != nullptr)
+        if (WorldContext)
         {
             // Accessing GameState from the WorldContext (likely UWorld) at offset 0x58
             AGameState *RawGameState = WorldContext->GameState;
 
-            if (RawGameState != nullptr)
+            if (RawGameState)
             {
                 DBDGameState = Cast<ADBDGameState>(RawGameState);
             }
         }
 
         // Validate that we have a valid ADBDGameState
-        if (DBDGameState != nullptr)
+        if (DBDGameState)
         {
             bool bFlagIsSet = DBDGameState->bActorIsBeingDestroyed;
 
@@ -472,7 +416,7 @@ void ADBDGameMode::CheckMapLoadingStatus(float deltaSeconds)
     // --- MAIN LOGIC FLOW ---
 
     // If GameInstance, GameState are valid and flags are clear
-    if (bIsStateValid == true)
+    if (bIsStateValid)
     {
         // 1. Check validity of a WeakObjectPtr at offset 0x178 in GameInstance
         // Likely checking if a session or specific manager is still valid
@@ -484,7 +428,7 @@ void ADBDGameMode::CheckMapLoadingStatus(float deltaSeconds)
         if (UnknownWeakPtr.IsValid())
         {
             AProceduralLevelBuilder *WeakPtrTarget = UnknownWeakPtr.Get();
-            if (WeakPtrTarget != nullptr)
+            if (WeakPtrTarget)
             {
                 if (WeakPtrTarget->_buildingDone)
                 {
@@ -496,7 +440,7 @@ void ADBDGameMode::CheckMapLoadingStatus(float deltaSeconds)
         // Only proceed if the weak pointer check passed (or more accurately, if it didn't fail the specific check)
         // However, looking at ASM flow (0x1402484f6), if the byte at 0x6b8 is FALSE, we continue.
         // If it is TRUE, we jump to the "Wait" block.
-        if (bWeakPtrPointsToValidObject == true)
+        if (bWeakPtrPointsToValidObject)
         {
             // 2. Update the Loading Timeout Timer
             this->_gameLevelLoadingTimeOutTimer->Update(deltaSeconds);
@@ -542,7 +486,7 @@ void ADBDGameMode::CheckMapLoadingStatus(float deltaSeconds)
     // 4. The WeakPtr check at 0x178 failed/indicated waiting
 
     // We need to re-verify existence of GameInstance and the WeakPtr at 0x178 to perform logging
-    if (DBDGameInstance != nullptr)
+    if (DBDGameInstance)
     {
         /* UNDEFINED ELEMENT: Member at offset 0x178 in UDBDGameInstance (FWeakObjectPtr) */
         TWeakObjectPtr<AProceduralLevelBuilder> UnknownWeakPtr = DBDGameInstance->Builder;
@@ -600,12 +544,12 @@ void ADBDGameMode::CheckPlayerCountAdjustement(UDBDGameInstance *instance)
         {
             APlayerState *PlayerState = GameState->PlayerArray[i];
 
-            if (PlayerState != nullptr)
+            if (PlayerState)
             {
                 ADBDPlayerState *DBDPlayerState = Cast<ADBDPlayerState>(PlayerState);
 
                 // Ensure the cast was successful and check class hierarchy depth/flags if needed (handled by Cast)
-                if (DBDPlayerState != nullptr)
+                if (DBDPlayerState)
                 {
                     // Check the custom Role byte at offset 0x750 in ADBDPlayerState
                     // 1 = Survivor, 2 = Killer
@@ -682,14 +626,14 @@ void ADBDGameMode::CheckPlayerCountAdjustement(UDBDGameInstance *instance)
 
         UWorld *World = this->GetWorld();
 
-        if (World != nullptr)
+        if (World)
         {
             for (TActorIterator<AInteractable> It(World); It; ++It)
             {
                 AInteractable *Interactable = *It;
 
                 // Check validity and pending kill status
-                if (Interactable != nullptr && Interactable->IsPendingKill() == false)
+                if (Interactable && Interactable->IsPendingKill() == false)
                 {
                     Interactable->ProceduralLevelDependencyItemAdjusted();
                 }
@@ -708,7 +652,7 @@ void ADBDGameMode::CheckPlayerLoadingStatus(UDBDGameInstance *instance)
     /* UNDEFINED ELEMENT: Member at offset 0x418 in ADBDGameMode (Likely cached GameState pointer) */
     ADBDGameState *DBDGameState = this->GetGameState<ADBDGameState>();
 
-    if (DBDGameState != nullptr)
+    if (DBDGameState)
     {
         // 1. Check Player Readiness
         // Calculate expected player count (Total - Observers)
@@ -782,7 +726,7 @@ void ADBDGameMode::CheckPlayerLoadingStatus(UDBDGameInstance *instance)
     // Re-acquire GameState from Instance (standard pattern in this function's ASM)
     ADBDGameState *TargetGameState = Cast<ADBDGameState>(instance->GetGameState());
 
-    if (TargetGameState != nullptr)
+    if (TargetGameState)
     {
         // Only update if we have Authority
         if (TargetGameState->Role == ROLE_Authority)
@@ -815,7 +759,7 @@ void ADBDGameMode::CheckPlayerLoadingStatus(UDBDGameInstance *instance)
     // Re-acquire GameState again (ASM does this repetitively)
     ADBDGameState *FinalGameState = Cast<ADBDGameState>(instance->GetGameState());
 
-    if (FinalGameState != nullptr)
+    if (FinalGameState)
     {
         if (FinalGameState->Role == ROLE_Authority)
         {
@@ -886,18 +830,18 @@ void ADBDGameMode::CheckSurvivorDisconnectBeforeMatchStart()
         /* UNDEFINED VTABLE: Calling GetWorld() via vtable index [0x108] */
         UWorld *World = this->GetWorld();
 
-        if (World != nullptr)
+        if (World)
         {
             AGameState *GameState = World->GetGameState();
 
-            if (GameState != nullptr)
+            if (GameState)
             {
                 // Iterate through the actual connected players in the match
                 for (int32 i = 0; i < GameState->PlayerArray.Num(); i++)
                 {
                     APlayerState *CurrentPlayerState = GameState->PlayerArray[i];
 
-                    if (CurrentPlayerState != nullptr)
+                    if (CurrentPlayerState)
                     {
                         // Compare current player's UniqueId with the cached one
                         if (CurrentPlayerState->UniqueId == CachedNetId)
@@ -940,13 +884,13 @@ AActor *ADBDGameMode::ChoosePlayerStart_Implementation(AController *Player)
     /* UNDEFINED ELEMENT */
     APlayerStart *AssignedStart = this->GetAssignedSpawnPoint(Player);
 
-    if (AssignedStart != nullptr && AssignedStart->IsPendingKill() == false)
+    if (AssignedStart && AssignedStart->IsPendingKill() == false)
     {
         return AssignedStart;
     }
 
     // Check if the Game Mode is running in Procedural Generation Mode
-    if (this->_proceduralMode == true)
+    if (this->_proceduralMode)
     {
         /* UNDEFINED ELEMENT */
         APlayerStart *KillerSpawn = this->GetKillerSpawnPoint();
@@ -958,7 +902,7 @@ AActor *ADBDGameMode::ChoosePlayerStart_Implementation(AController *Player)
         UDBDGameInstance *DBDGameInstance = Cast<UDBDGameInstance>(this->GetGameInstance());
 
         // Validate necessary objects are present and valid
-        if (DBDPlayerState != nullptr && DBDGameInstance != nullptr && KillerSpawn != nullptr && KillerSpawn->IsPendingKill() == false)
+        if (DBDPlayerState && DBDGameInstance && KillerSpawn && KillerSpawn->IsPendingKill() == false)
         {
             // Accessing the 'GameRole' byte at offset 0x750 in ADBDPlayerState.
             // 0x1 = Killer, 0x3 = Observer (Spectator), Other = Survivor.
@@ -981,7 +925,7 @@ AActor *ADBDGameMode::ChoosePlayerStart_Implementation(AController *Player)
                 /* UNDEFINED ELEMENT */
                 bool bHasShroudOffering = DBDGameInstance->HasOfferingOfType(FarKiller);
 
-                if (bHasShroudOffering == true)
+                if (bHasShroudOffering)
                 {
                     /* UNDEFINED ELEMENT */
                     return this->GetAvailableStartPoint();
@@ -993,7 +937,7 @@ AActor *ADBDGameMode::ChoosePlayerStart_Implementation(AController *Player)
                     /* UNDEFINED ELEMENT */
                     bool bHasFarOffering = DBDGameInstance->HasOfferingOfType(FarKiller, DBDPlayerState->PlayerId);
 
-                    if (bHasFarOffering == true)
+                    if (bHasFarOffering)
                     {
                         // Spawn furthest from the Killer
                         /* UNDEFINED ELEMENT */
@@ -1073,7 +1017,7 @@ void ADBDGameMode::CompleteEscapeRequirements()
     // The disassembly explicitly checks byte [rbx+0x140] bit 0x4.
     // According to the structure provided (_S), __bitfield140 contains bActorIsBeingDestroyed.
     // 0x4 (binary 100) corresponds to the 3rd bit in that union, which is bActorIsBeingDestroyed.
-    if (DBDGameState->IsActorBeingDestroyed() == true)
+    if (DBDGameState->IsActorBeingDestroyed())
     {
         return;
     }
@@ -1123,7 +1067,7 @@ void ADBDGameMode::CreatePlayersLoadout()
 
         // Specific check for the 'bActorIsBeingDestroyed' flag.
         // In the disassembly (14024c7d8), this checks byte at offset 0x140, bit 0x4.
-        if (DBDPlayer->IsActorBeingDestroyed() == true)
+        if (DBDPlayer->IsActorBeingDestroyed())
         {
             continue;
         }
@@ -1133,7 +1077,7 @@ void ADBDGameMode::CreatePlayersLoadout()
         // This likely checks if the loadout is ready to be created or required.
         bool bShouldCreate = DBDPlayer-> /* UNDEFINED VTABLE [Offset 0x1070] */ ();
 
-        if (bShouldCreate == true)
+        if (bShouldCreate)
         {
             // Call an undefined virtual function at offset 0xF00.
             // This presumably performs the actual creation of the loadout.
@@ -1169,14 +1113,14 @@ APlayerStart* ADBDGameMode::CreatePlayerStart(const USceneComponent* spawnPoint,
 
     class ADBDPlayerStart* NewPlayerStart = nullptr;
 
-    if (World != nullptr)
+    if (World)
     {
         // Call SpawnActor using the ADBDPlayerStart class.
         // The disassembly explicitly gets the private static class for "/Script/DeadByDaylight.DBDPlayerStart".
         NewPlayerStart = World->SpawnActor<ADBDPlayerStart>(ADBDPlayerStart::StaticClass(), Location, Rotation, SpawnParameters);
     }
 
-    if (NewPlayerStart != nullptr)
+    if (NewPlayerStart)
     {
         // Offset 0x3a8 typically corresponds to PlayerStartTag in APlayerStart
         NewPlayerStart->PlayerStartTag = tag;
@@ -1195,13 +1139,13 @@ APlayerStart* ADBDGameMode::CreatePlayerStart(const USceneComponent* spawnPoint,
 void ADBDGameMode::Escaped(class APlayerState* EscapedPlayer)
 {
     // Check if the provided pointer is valid before attempting logic
-    if (EscapedPlayer != nullptr)
+    if (EscapedPlayer)
     {
         // Attempt to cast the generic APlayerState to the specific ADBDPlayerState
         ADBDPlayerState* DBDPlayerState = Cast<ADBDPlayerState>(EscapedPlayer);
 
         // If the cast is successful, proceed with validity checks
-        if (DBDPlayerState != nullptr)
+        if (DBDPlayerState)
         {
             // The disassembly performs deep validity checks:
             // 1. Checks GUObjectArray flags (handled by IsValid in UE4).
@@ -1357,12 +1301,12 @@ APlayerStart* ADBDGameMode::GetClosestAvailableStartPoint(APlayerStart* spawnPoi
     FVector GoalLocation = FVector::ZeroVector;
 
     // Check if spawnPoint is valid.
-    if (spawnPoint != nullptr)
+    if (spawnPoint)
     {
         // In the disassembly (140256003), it accesses the RootComponent directly.
         // If it exists, it copies the Translation (Location).
         USceneComponent* GoalRoot = spawnPoint->GetRootComponent();
-        if (GoalRoot != nullptr)
+        if (GoalRoot)
         {
             GoalLocation = GoalRoot->GetComponentLocation();
         }
@@ -1403,7 +1347,7 @@ APlayerStart* ADBDGameMode::GetClosestAvailableStartPoint(APlayerStart* spawnPoi
         FVector CandidateLocation = FVector::ZeroVector;
         USceneComponent* CandidateRoot = DBDCandidate->GetRootComponent();
 
-        if (CandidateRoot != nullptr)
+        if (CandidateRoot)
         {
             CandidateLocation = CandidateRoot->GetComponentLocation();
         }
@@ -1456,7 +1400,7 @@ UClass* ADBDGameMode::GetDefaultPawnClassForController_Implementation(AControlle
 
     // Check for Survivor Role (0x2 corresponds to VE_Camper in DBD context)
     // Offset 0x750 is GameRole
-    if (DBDPlayerState != nullptr && DBDPlayerState->GameRole == VE_Camper)
+    if (DBDPlayerState && DBDPlayerState->GameRole == VE_Camper)
     {
         int32 CamperIndex = CastedController->GetCamperIndex();
         
@@ -1478,7 +1422,7 @@ UClass* ADBDGameMode::GetDefaultPawnClassForController_Implementation(AControlle
     ADBDPlayerState* ControllerDBDState = CastedController->GetDBDPlayerState();
 
     // Check for Observer/Spectator Role (0x3)
-    if (ControllerDBDState != nullptr && ControllerDBDState->GameRole == VE_Observer)
+    if (ControllerDBDState && ControllerDBDState->GameRole == VE_Observer)
     {
         // 0xFFFFFFFF (-1) indicates a default/generic character for observers
         return DBDGameInstance->GetGameCharacterSynchronous(-1);
@@ -1551,11 +1495,11 @@ APlayerStart* ADBDGameMode::GetFurthestAvailableStartPoint(class APlayerStart* s
     FVector OriginLocation = FVector::ZeroVector;
 
     // Check if the input spawnPoint is valid.
-    if (spawnPoint != nullptr)
+    if (spawnPoint)
     {
         // Disassembly (140257033) explicitly checks the RootComponent (offset 0x160).
         USceneComponent* OriginRoot = spawnPoint->GetRootComponent();
-        if (OriginRoot != nullptr)
+        if (OriginRoot)
         {
             OriginLocation = OriginRoot->GetComponentLocation();
         }
@@ -1595,7 +1539,7 @@ APlayerStart* ADBDGameMode::GetFurthestAvailableStartPoint(class APlayerStart* s
         FVector CandidateLocation = FVector::ZeroVector;
         USceneComponent* CandidateRoot = DBDCandidate->GetRootComponent();
 
-        if (CandidateRoot != nullptr)
+        if (CandidateRoot)
         {
             CandidateLocation = CandidateRoot->GetComponentLocation();
         }
@@ -1646,7 +1590,7 @@ APlayerStart* ADBDGameMode::GetKillerSpawnPoint() const
         }
 
         // Explicit check for bit 0x4 at offset 0x140 (bActorIsBeingDestroyed) seen in disassembly.
-        if (SpawnPoint->IsActorBeingDestroyed() == true)
+        if (SpawnPoint->IsActorBeingDestroyed())
         {
             continue;
         }
@@ -1659,13 +1603,13 @@ APlayerStart* ADBDGameMode::GetKillerSpawnPoint() const
         FString TagString = PlayerStartTag.ToString();
         FString BaseName = TEXT("Slasher");
 
-        if (TagString.StartsWith(BaseName) == true)
+        if (TagString.StartsWith(BaseName))
         {
             // Extract the suffix part of the name
             FString Suffix = TagString.RightChop(BaseName.Len());
 
             // Ensure the suffix is numeric to match the number extraction logic
-            if (Suffix.IsNumeric() == true)
+            if (Suffix.IsNumeric())
             {
                 // Convert suffix to integer
                 int32 ExtractedNumber = FCString::Atoi(*Suffix);
@@ -1713,7 +1657,7 @@ APlayerStart* ADBDGameMode::GetObserverSpawnPoint() const
         }
 
         // Explicit check for bit 0x4 at offset 0x140 (bActorIsBeingDestroyed)
-        if (SpawnPoint->IsActorBeingDestroyed() == true)
+        if (SpawnPoint->IsActorBeingDestroyed())
         {
             continue;
         }
@@ -1727,13 +1671,13 @@ APlayerStart* ADBDGameMode::GetObserverSpawnPoint() const
         FString BaseName = TEXT("Observer");
 
         // Check if the tag starts with "Observer"
-        if (TagString.StartsWith(BaseName) == true)
+        if (TagString.StartsWith(BaseName))
         {
             // Extract the suffix part of the name
             FString Suffix = TagString.RightChop(BaseName.Len());
 
             // Ensure the suffix is numeric to extract the number
-            if (Suffix.IsNumeric() == true)
+            if (Suffix.IsNumeric())
             {
                 // Convert suffix to integer
                 int32 ExtractedNumber = FCString::Atoi(*Suffix);
@@ -1795,10 +1739,10 @@ int32 ADBDGameMode::GetPlayerReadyCount(UDBDGameInstance* instance)
 
         // Standard validity check (IsPendingKill check at 0x140 bit 4 seen in disassembly)
         bool bIsPlayerDataValid = false;
-        if (PlayerData != nullptr)
+        if (PlayerData)
         {
             // Check IsPendingKill (GUObjectArray check in disassembly) and bActorIsBeingDestroyed
-            if (IsValid(PlayerData) == true && PlayerData->IsActorBeingDestroyed() == false)
+            if (IsValid(PlayerData) && PlayerData->IsActorBeingDestroyed() == false)
             {
                 bIsPlayerDataValid = true;
             }
@@ -1813,16 +1757,16 @@ int32 ADBDGameMode::GetPlayerReadyCount(UDBDGameInstance* instance)
 
             // Validate PlayerState and check IsPendingKill
             bool bIsPlayerStateValid = false;
-            if (DBDPlayerState != nullptr)
+            if (DBDPlayerState)
             {
-                if (IsValid(DBDPlayerState) == true && DBDPlayerState->IsActorBeingDestroyed() == false)
+                if (IsValid(DBDPlayerState) && DBDPlayerState->IsActorBeingDestroyed() == false)
                 {
                     bIsPlayerStateValid = true;
                 }
             }
 
             // Check if the player is an Observer (GameRole == 3 at offset 0x750)
-            if (bIsPlayerStateValid == true && DBDPlayerState->GameRole == VE_Observer) /* UNDEFINED ELEMENT: VE_Observer */
+            if (bIsPlayerStateValid && DBDPlayerState->GameRole == VE_Observer) /* UNDEFINED ELEMENT: VE_Observer */
             {
                 // Append "Observer" to the main debug string
                 this->_readyDebugString += TEXT("Observer");
@@ -1874,8 +1818,8 @@ int32 ADBDGameMode::GetPlayerReadyCount(UDBDGameInstance* instance)
                         UDBDPlayerData::IsLightSpawned(PlayerData));
                 }
 
-                if (UDBDPlayerData::IsLoadoutSpawned(PlayerData) == true && 
-                    UDBDPlayerData::IsLightSpawned(PlayerData) == true)
+                if (UDBDPlayerData::IsLoadoutSpawned(PlayerData) && 
+                    UDBDPlayerData::IsLightSpawned(PlayerData))
                 {
                     bIsReady = true;
                 }
@@ -1899,7 +1843,7 @@ int32 ADBDGameMode::GetPlayerReadyCount(UDBDGameInstance* instance)
             }
 
             // Update ready count and status string
-            if (bIsReady == true)
+            if (bIsReady)
             {
                 ReadyCount = ReadyCount + 1;
                 PlayerStatusKey.AppendInt(1);
@@ -1927,7 +1871,7 @@ int32 ADBDGameMode::GetPlayerReadyCount(UDBDGameInstance* instance)
     // Get total number of players in the game state
     // Offset 0x418 is GameState, 0x3B8 is PlayerArray.Num()
     int32 TotalPlayers = 0;
-    if (this->GameState != nullptr)
+    if (this->GameState)
     {
         TotalPlayers = this->GameState->PlayerArray.Num();
     }
@@ -2015,7 +1959,7 @@ TArray<APlayerStart*> ADBDGameMode::GetSurvivorSpawnPoints() const
         }
 
         // Explicit check for bit 0x4 at offset 0x140 (bActorIsBeingDestroyed)
-        if (SpawnPoint->IsActorBeingDestroyed() == true)
+        if (SpawnPoint->IsActorBeingDestroyed())
         {
             continue;
         }
@@ -2096,12 +2040,12 @@ void ADBDGameMode::HandleMatchEnded(uint8 serverHasLeftMatch)
     UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(GameInstance);
 
     // Ensure GameInstance is valid before proceeding with LocalPlayer logic
-    if (DBDGameInstance != nullptr)
+    if (DBDGameInstance)
     {
         // Retrieve the first LocalPlayer
         ULocalPlayer* LocalPlayer = GameInstance->GetLocalPlayerByIndex(0);
 
-        if (LocalPlayer != nullptr)
+        if (LocalPlayer)
         {
             // Create a LocalPlayerContext to safely retrieve the Pawn
             FLocalPlayerContext PlayerContext(LocalPlayer, nullptr); // Disassembly creates this on stack
@@ -2181,7 +2125,7 @@ void ADBDGameMode::HandleMatchEnded(uint8 serverHasLeftMatch)
     FPlayerPersistentData* PersistentData = PersistentDataManager->GetPlayerPersistentData(UniqueId);
 
     // If data was retrieved successfully, update the SelectedSlasherIndex.
-    if (PersistentData != nullptr)
+    if (PersistentData)
     {
         // Offset 0x18c corresponds to SavedData.SharedData.SelectedSlasherIndex in the provided structure hints.
         // Value 0x10000000 (268435456) is assigned.
@@ -2201,7 +2145,7 @@ void ADBDGameMode::HostGame()
         // Retrieve the number of players currently in the GameState.
         // Offset 0x418 is GameState. Offset 0x3B8 in AGameState is PlayerArray.
         int32 PlayerCount = 0;
-        if (this->GameState != nullptr)
+        if (this->GameState)
         {
             PlayerCount = this->GameState->PlayerArray.Num();
         }
@@ -2213,7 +2157,7 @@ void ADBDGameMode::HostGame()
         // Disassembly performs GetPrivateStaticClass check.
         UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(GameInstance);
 
-        if (DBDGameInstance != nullptr)
+        if (DBDGameInstance)
         {
             // The disassembly accesses a pointer at offset 0x3B8 of UDBDGameInstance,
             // then writes the PlayerCount to offset 0x28 of that internal object.
@@ -2221,7 +2165,7 @@ void ADBDGameMode::HostGame()
             
             /* UNDEFINED ELEMENT: Updating unknown internal session/state member in UDBDGameInstance */
             UDBDPersistentData* PersistentData = DBDGameInstance->_persistentData;
-            if (PersistentData != nullptr)
+            if (PersistentData)
             {
                 PersistentData->_gamePersistentData.PlayerCount = PlayerCount;
             }
@@ -2230,7 +2174,7 @@ void ADBDGameMode::HostGame()
         // Retrieve the World.
         UWorld* World = this->GetWorld();
 
-        if (World != nullptr)
+        if (World)
         {
             // Construct the URL for ServerTravel.
             // The disassembly references global constants `UIConstants::MAPS_ROOT_0` and `UIConstants::MAP_NAME_PARADISE_0`.
@@ -2271,7 +2215,7 @@ void ADBDGameMode::InitGameState()
     ADBDGameState* DBDGameState = Cast<ADBDGameState>(CurrentGameState);
 
     // Validate GameState (Check null, GUObjectArray validity, and PendingKill/Destroyed flags)
-    if (DBDGameState != nullptr && IsValid(DBDGameState) && !DBDGameState->IsActorBeingDestroyed())
+    if (DBDGameState && IsValid(DBDGameState) && !DBDGameState->IsActorBeingDestroyed())
     {
         // Generate a new Session ID
         FGuid NewSessionId = FGuid::NewGuid();
@@ -2289,12 +2233,12 @@ void ADBDGameMode::InitGameState()
     UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(GameInstance);
 
     // Validate GameInstance
-    if (DBDGameInstance != nullptr && IsValid(DBDGameInstance))
+    if (DBDGameInstance && IsValid(DBDGameInstance))
     {
         // Retrieve the GameEventTracker from the GameInstance (Offset 0x108)
         UGameEventTracker* EventTracker = DBDGameInstance->GameEventTracker;
 
-        if (EventTracker != nullptr)
+        if (EventTracker)
         {
             // Bind 'OnGameplayEvent' to the dynamic delegate in the EventTracker.
             // Offset 0x28 in UGameEventTracker corresponds to OnGameplayEvent.
@@ -2320,9 +2264,9 @@ FString ADBDGameMode::InitNewPlayer(APlayerController* NewPlayerController, cons
     ADBDPlayerState* DBDPlayerState = Cast<ADBDPlayerState>(PlayerState);
 
     // Check if both the GameInstance and PlayerState are valid and cast successfully
-    if (DBDGameInstance != nullptr)
+    if (DBDGameInstance)
     {
-        if (DBDPlayerState != nullptr)
+        if (DBDPlayerState)
         {
             // Parse the "Role" option from the login options string
             // "LoginOptionsKeys::ROLE" is likely a static const FString key defined elsewhere
@@ -2339,7 +2283,7 @@ FString ADBDGameMode::InitNewPlayer(APlayerController* NewPlayerController, cons
             FString NameOptionString = UGameplayStatics::ParseOption(Options, TEXT("Name"));
 
             // If the name is missing, fallback to a default value (source indicates a global variable in_pszStateGroup)
-            if (NameOptionString.IsEmpty() == true)
+            if (NameOptionString.IsEmpty())
             {
                 /* UNDEFINED ELEMENT */
                 NameOptionString = FString(in_pszStateGroup); //Wwise thing
@@ -2365,7 +2309,7 @@ FString ADBDGameMode::InitNewPlayer(APlayerController* NewPlayerController, cons
                 /* UNDEFINED ELEMENT */
                 FPlayerPersistentData* PersistentData = UDBDPersistentData::GetPlayerPersistentData(PlayerUniqueId);
 
-                if (PersistentData != nullptr)
+                if (PersistentData)
                 {
                     // Check if the controller is local to determine how data is copied
                     bool bIsLocalController = NewPlayerController->IsLocalController();
@@ -2384,7 +2328,7 @@ FString ADBDGameMode::InitNewPlayer(APlayerController* NewPlayerController, cons
     }
 
     // Fallback logic for assigning a Role if one hasn't been assigned yet
-    if (DBDPlayerState != nullptr)
+    if (DBDPlayerState)
     {
         // Check if the GameRole is currently 0 (VE_None). 
         // 0x750 offset in disassembly likely corresponds to the GameRole property or a replicated component holding it.
@@ -2394,14 +2338,14 @@ FString ADBDGameMode::InitNewPlayer(APlayerController* NewPlayerController, cons
             EPlayerRole NewRole = EPlayerRole::VE_Camper;
 
             // Check if the game mode is configured to start with a Slasher
-            if (this->StartWithSlasher == true)
+            if (this->StartWithSlasher)
             {
                 // Retrieve the GameState to check the player count
                 AGameState* CurrentGameState = this->GetGameState();
 
                 // If this is the first player joining (PlayerArray.Num() == 1), assign them as Slasher (1)
                 // 1 = Likely VE_Slasher/Killer
-                if (CurrentGameState != nullptr)
+                if (CurrentGameState)
                 {
                     if (CurrentGameState->PlayerArray.Num() == 1)
                     {
@@ -2435,20 +2379,20 @@ void ADBDGameMode::InitStartSpot_Implementation(AActor* StartSpot, AController* 
     ADBDPlayerStart* DBDPlayerStart = Cast<ADBDPlayerStart>(StartSpot);
 
     // If the cast is successful, proceed with logic
-    if (DBDPlayerStart != nullptr)
+    if (DBDPlayerStart)
     {
         // The disassembly performs manual checks on GUObjectArray, InternalIndex, and ObjectFlags (0x20000000 and 0x4)
         // These checks correspond to validating that the object is not PendingKill or Unreachable.
         // We use the standard UE4 IsValid() function which encapsulates these checks.
-        if (IsValid(DBDPlayerStart) == true)
+        if (IsValid(DBDPlayerStart))
         {
             // Similarly check if the NewPlayer controller is valid based on the flags check in disassembly
-            if (IsValid(NewPlayer) == true)
+            if (IsValid(NewPlayer))
             {
                 // Access the PlayerState from the Controller (Offset 0x3A0 in AController)
                 APlayerState* PlayerState = NewPlayer->PlayerState;
 
-                if (PlayerState != nullptr)
+                if (PlayerState)
                 {
                     // Retrieve the PlayerId (Offset 0x3A8 in APlayerState)
                     int32 PlayerId = PlayerState->PlayerId;
@@ -2533,7 +2477,7 @@ void ADBDGameMode::Killed(APlayerState* KilledPlayer, bool shouldCheckGameEnded)
 
     // Validate the pointer and ensure the object is not pending kill
     // The disassembly performs checks on Flags (0x20000000) and InternalIndex to ensure validity
-    if (IsValid(DBDPlayerState) == true)
+    if (IsValid(DBDPlayerState))
     {
         // Call a virtual function on the PlayerState.
         // The disassembly loads the VTable (mov rax, [rbx]) and calls the function at offset 0x750.
@@ -2543,7 +2487,7 @@ void ADBDGameMode::Killed(APlayerState* KilledPlayer, bool shouldCheckGameEnded)
     }
 
     // Check if we should verify the game ending condition
-    if (shouldCheckGameEnded == true)
+    if (shouldCheckGameEnded)
     {
         // Call the protected/internal function to check if the game has ended
         /* UNDEFINED ELEMENT */
@@ -2586,7 +2530,7 @@ APlayerController* ADBDGameMode::Login(UPlayer* NewPlayer, ENetRole RemoteRole, 
     }
     else
     {
-        if (World != nullptr)
+        if (World)
         {
             if (World->WorldType == EWorldType::PIE)
             {
@@ -2614,9 +2558,9 @@ APlayerController* ADBDGameMode::Login(UPlayer* NewPlayer, ENetRole RemoteRole, 
 
     // Validate that the PlayerController was created successfully
     // The disassembly performs manual IsValid checks (checking GUObjectArray and flags)
-    if (NewPlayerController != nullptr)
+    if (NewPlayerController)
     {
-        if (IsValid(NewPlayerController) == true)
+        if (IsValid(NewPlayerController))
         {
             // Force the HUD class on the client to match the GameMode's current HUDClass
             // This ensures the client gets the correct HUD even if overrides happened above
@@ -2638,24 +2582,24 @@ void ADBDGameMode::OnGameplayEvent(EDBDScoreTypes gameplayEventType, float amoun
 
     // Check if instigator is valid and is of type ACamperPlayer
     // The disassembly explicitly checks against ACamperPlayer::GetPrivateStaticClass() and validates internal object flags (IsValid)
-    if (instigator != nullptr && instigator->IsA(ACamperPlayer::StaticClass()) && IsValid(instigator) == true)
+    if (instigator && instigator->IsA(ACamperPlayer::StaticClass()) && IsValid(instigator))
     {
         SubjectActor = instigator;
     }
     // If instigator was not valid/applicable, check if the target is a valid ACamperPlayer
-    else if (target != nullptr && target->IsA(ACamperPlayer::StaticClass()) && IsValid(target) == true)
+    else if (target && target->IsA(ACamperPlayer::StaticClass()) && IsValid(target))
     {
         SubjectActor = target;
     }
 
     // If we found a valid Camper actor to process
-    if (SubjectActor != nullptr)
+    if (SubjectActor)
     {
         // Cast the generic actor to the specific ADBDPlayer class to access custom functions
         /* UNDEFINED ELEMENT - Assuming ACamperPlayer inherits from ADBDPlayer */
         ADBDPlayer* DBDPlayer = Cast<ADBDPlayer>(SubjectActor);
 
-        if (DBDPlayer != nullptr)
+        if (DBDPlayer)
         {
             // Retrieve the custom player controller. 
             // Disassembly calls ?GetPlayerController@ADBDPlayer@@ which is likely a custom helper method.
@@ -2663,12 +2607,12 @@ void ADBDGameMode::OnGameplayEvent(EDBDScoreTypes gameplayEventType, float amoun
             ADBDPlayerController* PlayerController = DBDPlayer->GetPlayerController();
 
             // Validate the controller. Disassembly performs IsValid checks (GUObjectArray bounds and flags).
-            if (PlayerController != nullptr && IsValid(PlayerController) == true)
+            if (PlayerController && IsValid(PlayerController))
             {
                 APlayerState* PlayerState = PlayerController->PlayerState;
 
                 // Validate the PlayerState
-                if (PlayerState != nullptr && IsValid(PlayerState) == true)
+                if (PlayerState && IsValid(PlayerState))
                 {
                     FName ObjectiveTag;
                     bool bShouldProcessEvent = false;
@@ -2715,7 +2659,7 @@ void ADBDGameMode::OnGameplayEvent(EDBDScoreTypes gameplayEventType, float amoun
                             break;
                     }
 
-                    if (bShouldProcessEvent == true)
+                    if (bShouldProcessEvent)
                     {
                         // Create a copy of the Player's UniqueNetId. 
                         // The assembly shows explicit ref-counting manipulation (SharedReferenceCount), 
@@ -2745,7 +2689,7 @@ void ADBDGameMode::ProceduralLevelBuilt()
     AProceduralLevelBuilder* ProceduralLevelBuilder = this->GetProceduralLevelBuilder();
 
     // Only proceed if the builder exists and is valid
-    if (ProceduralLevelBuilder != nullptr)
+    if (ProceduralLevelBuilder)
     {
         // Mark the game mode as operating in procedural mode
         this->_proceduralMode = true;
@@ -2754,7 +2698,7 @@ void ADBDGameMode::ProceduralLevelBuilt()
         UGameInstance* GameInstance = this->GetGameInstance();
         UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(GameInstance);
 
-        if (DBDGameInstance != nullptr)
+        if (DBDGameInstance)
         {
             // The disassembly accesses an array at offset 0x1C0 (GameInstance + 28 in pseudo-code pointer arithmetic)
             // It clears this array.
@@ -2777,7 +2721,7 @@ void ADBDGameMode::ProceduralLevelBuilt()
         for (int32 i = 0; i < SurvivorSpawnPoints.Num(); i++)
         {
             const USceneComponent* SurvivorPoint = SurvivorSpawnPoints[i];
-            if (SurvivorPoint != nullptr)
+            if (SurvivorPoint)
             {
                 // Create PlayerStart actors with the "Camper" tag
                 /* UNDEFINED ELEMENT */
@@ -2796,7 +2740,7 @@ void ADBDGameMode::ProceduralLevelBuilt()
         // Spawn the observer start at ZeroVector/ZeroRotator
         APlayerStart* ObserverStart = World->SpawnActor<APlayerStart>(PlayerStartClass, FVector::ZeroVector, FRotator::ZeroRotator, SpawnInfo);
         
-        if (ObserverStart != nullptr)
+        if (ObserverStart)
         {
             ObserverStart->PlayerStartTag = FName("Observer");
         }
@@ -2824,7 +2768,7 @@ void ADBDGameMode::ProceduralLevelBuilt()
         for (TActorIterator<AInteractable> It(this->GetWorld()); It; ++It)
         {
             AInteractable* Interactable = *It;
-            if (Interactable != nullptr)
+            if (Interactable)
             {
                 // Call a virtual function at vtable index 188 (Offset 0x5E0)
                 // This likely initializes the interactable after procedural placement
@@ -2854,7 +2798,7 @@ void ADBDGameMode::RestartGame()
     this->EscapeOpened = false;
 
     // Check if the match has officially started before attempting restart logic
-    if (this->HasMatchStarted() == true)
+    if (this->HasMatchStarted())
     {
         // Iterate over all PlayerControllers in the world
         // UE4 uses TIndexedContainerIterator for sparse arrays like the controller list
@@ -2864,7 +2808,7 @@ void ADBDGameMode::RestartGame()
             AController* Controller = Iterator->Get();
 
             // Validate the controller and its PlayerState
-            if (Controller != nullptr && Controller->PlayerState != nullptr)
+            if (Controller && Controller->PlayerState)
             {
                 // Check if the player is NOT a spectator.
                 // 2 corresponds to the bit flag for bIsSpectator in APlayerState.
@@ -2882,7 +2826,7 @@ void ADBDGameMode::RestartGame()
 
                     // Handle the Pawn
                     APawn* ControlledPawn = Controller->GetPawn();
-                    if (ControlledPawn != nullptr)
+                    if (ControlledPawn)
                     {
                         // Check if the Pawn is of type ADBDPlayer (or ACamperPlayer/ASlasherPlayer base)
                         // Disassembly checks against ADBDPlayer::GetPrivateStaticClass
@@ -2963,7 +2907,7 @@ void ADBDGameMode::SetPlayersGameEnded(bool serverHasLeftMatch)
         APlayerController* Controller = Iterator->Get();
 
         // Check if the controller is valid
-        if (Controller != nullptr)
+        if (Controller)
         {
             // Cast to ADBDPlayerController to access specific functionality
             // Disassembly checks against ADBDPlayerController::GetPrivateStaticClass
@@ -2971,17 +2915,17 @@ void ADBDGameMode::SetPlayersGameEnded(bool serverHasLeftMatch)
 
             // Ensure the controller is valid (not pending kill, etc.)
             // The disassembly explicitly checks flags (0x20000000 = RF_PendingKill/RF_Unreachable) and InternalIndex
-            if (IsValid(DBDController) == true)
+            if (IsValid(DBDController))
             {
                 // Access the PlayerState
                 APlayerState* PlayerState = DBDController->PlayerState;
 
-                if (PlayerState != nullptr)
+                if (PlayerState)
                 {
                     // Verify it is an ADBDPlayerState
                     ADBDPlayerState* DBDPlayerState = Cast<ADBDPlayerState>(PlayerState);
 
-                    if (IsValid(DBDPlayerState) == true)
+                    if (IsValid(DBDPlayerState))
                     {
                         // Call the authority function to evaluate the internal game end state for this controller
                         // This likely calculates scores, updates localized states, etc.
@@ -2995,14 +2939,14 @@ void ADBDGameMode::SetPlayersGameEnded(bool serverHasLeftMatch)
 
     // Handle GameState update if the server has left
     AGameState* CurrentGameState = this->GameState;
-    if (CurrentGameState != nullptr)
+    if (CurrentGameState)
     {
         ADBDGameState* DBDGameState = Cast<ADBDGameState>(CurrentGameState);
         
         // Check if GameState is valid and not marked for destruction
-        if (IsValid(DBDGameState) == true)
+        if (IsValid(DBDGameState))
         {
-            if (serverHasLeftMatch == true)
+            if (serverHasLeftMatch)
             {
                 // Notify clients via multicast that the game ended because the server left
                 /* UNDEFINED ELEMENT */
@@ -3015,11 +2959,11 @@ void ADBDGameMode::SetPlayersGameEnded(bool serverHasLeftMatch)
     for (FConstPlayerControllerIterator Iterator = this->GetWorld()->GetPlayerControllerIterator(); Iterator; ++Iterator)
     {
         APlayerController* Controller = Iterator->Get();
-        if (Controller != nullptr)
+        if (Controller)
         {
             ADBDPlayerController* DBDController = Cast<ADBDPlayerController>(Controller);
 
-            if (IsValid(DBDController) == true)
+            if (IsValid(DBDController))
             {
                 // Evaluate score events for the end of the game
                 /* UNDEFINED ELEMENT */
@@ -3028,7 +2972,7 @@ void ADBDGameMode::SetPlayersGameEnded(bool serverHasLeftMatch)
                 // Access the PlayerState again for cleanup logic
                 ADBDPlayerState* DBDPlayerState = Cast<ADBDPlayerState>(DBDController->PlayerState);
 
-                if (IsValid(DBDPlayerState) == true)
+                if (IsValid(DBDPlayerState))
                 {
                     // Check specific game-end conditions on the PlayerState
                     // Offsets 1872 and 2041 correspond to specific byte flags in the disassembly.
@@ -3059,7 +3003,7 @@ APawn* ADBDGameMode::SpawnDefaultPawnFor_Implementation(AController* NewPlayer, 
     APawn* ResultPawn = Super::SpawnDefaultPawnFor_Implementation(NewPlayer, StartSpot);
 
     // If the base implementation succeeded, return the pawn immediately
-    if (ResultPawn != nullptr)
+    if (ResultPawn)
     {
         return ResultPawn;
     }
@@ -3086,7 +3030,7 @@ APawn* ADBDGameMode::SpawnDefaultPawnFor_Implementation(AController* NewPlayer, 
             
             // Try to resolve the class name of the DefaultPawnClass
             UClass* PawnClassToSpawn = this->DefaultPawnClass;
-            if (PawnClassToSpawn != nullptr)
+            if (PawnClassToSpawn)
             {
                 // Verify inheritance from APawn to be safe, although DefaultPawnClass usually enforces this
                 if (PawnClassToSpawn->IsChildOf(APawn::StaticClass()))
@@ -3104,7 +3048,7 @@ APawn* ADBDGameMode::SpawnDefaultPawnFor_Implementation(AController* NewPlayer, 
         FRotator StartRotation(ForceInit);
         FVector StartLocation(ForceInit);
 
-        if (StartSpot != nullptr && StartSpot->GetRootComponent() != nullptr)
+        if (StartSpot && StartSpot->GetRootComponent())
         {
             USceneComponent* StartRoot = StartSpot->GetRootComponent();
             
@@ -3139,7 +3083,7 @@ APawn* ADBDGameMode::SpawnDefaultPawnFor_Implementation(AController* NewPlayer, 
     } while (ResultPawn == nullptr); // Continue loop if spawn failed
 
     // If we successfully spawned a pawn, verify its validity
-    if (ResultPawn != nullptr)
+    if (ResultPawn)
     {
         // Standard IsValid checks (not pending kill) logic seen in disassembly
         if (IsValid(ResultPawn))
@@ -3158,7 +3102,7 @@ ForceSpawn:
     FRotator ForcedRotation = FRotator::ZeroRotator;
     FVector ForcedLocation = FVector::ZeroVector;
 
-    if (StartSpot != nullptr && StartSpot->GetRootComponent() != nullptr)
+    if (StartSpot && StartSpot->GetRootComponent())
     {
         USceneComponent* StartRoot = StartSpot->GetRootComponent();
         
@@ -3180,7 +3124,7 @@ ForceSpawn:
     if (UE_GET_LOG_VERBOSITY(ProceduralLevelGeneration) >= ELogVerbosity::VeryVerbose)
     {
         FString ClassName = TEXT("None");
-        if (this->DefaultPawnClass != nullptr && this->DefaultPawnClass->IsChildOf(APawn::StaticClass()))
+        if (this->DefaultPawnClass && this->DefaultPawnClass->IsChildOf(APawn::StaticClass()))
         {
             ClassName = this->DefaultPawnClass->GetName();
         }
@@ -3215,9 +3159,9 @@ void ADBDGameMode::StartNewPlayer(APlayerController* NewPlayer)
     ADBDPlayerState* DBDPlayerState = Cast<ADBDPlayerState>(PlayerState);
 
     // If both the custom GameInstance and PlayerState are valid, attempt to load persistent data
-    if (DBDGameInstance != nullptr)
+    if (DBDGameInstance)
     {
-        if (DBDPlayerState != nullptr)
+        if (DBDPlayerState)
         {
             // Prepare the unique net ID for persistent data retrieval
             FUniqueNetIdRepl PlayerUniqueId = DBDPlayerState->UniqueId;
@@ -3227,7 +3171,7 @@ void ADBDGameMode::StartNewPlayer(APlayerController* NewPlayer)
             /* UNDEFINED ELEMENT */
             FPlayerPersistentData* PersistentData = UDBDPersistentData::GetPlayerPersistentData(PlayerUniqueId);
 
-            if (PersistentData != nullptr)
+            if (PersistentData)
             {
                 // Check if the controller is local to determine how data is copied
                 bool bIsLocalController = NewPlayer->IsLocalController();
@@ -3245,7 +3189,7 @@ void ADBDGameMode::StartNewPlayer(APlayerController* NewPlayer)
     }
 
     // Fallback logic for assigning a Role if the player state is valid but role is likely uninitialized (VE_None)
-    if (DBDPlayerState != nullptr)
+    if (DBDPlayerState)
     {
         // Check if role is VE_None (0)
         // offset 0x750 in disassembly corresponds to the GameRole property
@@ -3257,10 +3201,10 @@ void ADBDGameMode::StartNewPlayer(APlayerController* NewPlayer)
             AGameState* CurrentGameState = this->GameState;
 
             // Check if the game mode is configured to start with a Slasher
-            if (this->StartWithSlasher == true)
+            if (this->StartWithSlasher)
             {
                 // If this is the first player joining (PlayerArray.Num() == 1), assign them as Slasher (1)
-                if (CurrentGameState != nullptr && CurrentGameState->PlayerArray.Num() == 1)
+                if (CurrentGameState && CurrentGameState->PlayerArray.Num() == 1)
                 {
                     NewRole = EPlayerRole::VE_Slasher;
                 }
@@ -3289,7 +3233,7 @@ void ADBDGameMode::StartPlay()
     UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(GameInstance);
 
     // If the custom GameInstance is valid
-    if (DBDGameInstance != nullptr)
+    if (DBDGameInstance)
     {
         // Retrieve the SacrificeSequencer from the GameInstance.
         // Disassembly: UDBDGameInstance::GetSacrificeSequencer()
@@ -3299,7 +3243,7 @@ void ADBDGameMode::StartPlay()
         // Reset the sequencer.
         // Disassembly explicitly calls USequencer::Reset().
         /* UNDEFINED ELEMENT */
-        if (SacrificeSequencer != nullptr)
+        if (SacrificeSequencer)
         {
             SacrificeSequencer->Reset();
         }
@@ -3318,11 +3262,11 @@ void ADBDGameMode::StartTravel()
         APlayerController* Controller = Iterator->Get();
 
         // If the controller is valid
-        if (Controller != nullptr)
+        if (Controller)
         {
             // Access the PlayerState
             APlayerState* PlayerState = Controller->PlayerState;
-            if (PlayerState != nullptr)
+            if (PlayerState)
             {
                 // Verify the PlayerState class
                 // Disassembly checks ADBDPlayerState::GetPrivateStaticClass()
@@ -3404,14 +3348,14 @@ void ADBDGameMode::UpdateGeneratorNeeded()
 
     // Verify the Object Flags to ensure the GameState is not pending kill
     // 0x20000000 corresponds to RF_PendingKill or RF_BeginDestroyed in UE4.13
-    if (DbdGameState->IsPendingKill() == true)
+    if (DbdGameState->IsPendingKill())
     {
         return;
     }
 
     // Check the bAutoDestroyWhenFinished flag on the Actor
     // Disassembly checks byte at offset 0x140, bit 4 (0x04)
-    if (DbdGameState->bAutoDestroyWhenFinished == true)
+    if (DbdGameState->bAutoDestroyWhenFinished)
     {
         return;
     }
@@ -3424,7 +3368,7 @@ void ADBDGameMode::UpdateGeneratorNeeded()
     UDBDGameInstance* DbdGameInstance = Cast<UDBDGameInstance>(LocalGameInstance);
 
     // If we have a valid UDBDGameInstance
-    if (DbdGameInstance != nullptr)
+    if (DbdGameInstance)
     {
         /* UNDEFINED ELEMENT */
         // The disassembly accesses a pointer at offset 0x3B8 within UDBDGameInstance.
@@ -3433,7 +3377,7 @@ void ADBDGameMode::UpdateGeneratorNeeded()
         UDBDPersistentData* PersistentData = DbdGameInstance->_persistentData;
 
         // Ensure the retrieved pointer is valid
-        if (PersistentData != nullptr)
+        if (PersistentData)
         {
             /* UNDEFINED ELEMENT */
             // The disassembly reads a 32-bit integer (DWORD) from offset 0x28 of the object retrieved above.
@@ -3462,13 +3406,13 @@ void ADBDGameMode::UpdateJoinability(bool inGame)
     }
 
     // Verify the World object is not pending kill (Flags check 0x20000000 in ASM)
-    if (World->IsPendingKill() == true)
+    if (World->IsPendingKill())
     {
         return;
     }
 
     // Ensure we are not running in a Play-In-Editor (PIE) session
-    if (World->IsPlayInEditor() == true)
+    if (World->IsPlayInEditor())
     {
         return;
     }
@@ -3491,7 +3435,7 @@ void ADBDGameMode::UpdateJoinability(bool inGame)
     }
 
     // Check if the DbdGameInstance is pending kill
-    if (DbdGameInstance->IsPendingKill() == true)
+    if (DbdGameInstance->IsPendingKill())
     {
         return;
     }
@@ -3507,7 +3451,7 @@ void ADBDGameMode::UpdateJoinability(bool inGame)
     }
 
     // Verify the unknown object is valid (InternalIndex check in ASM)
-    if (ContextSystem->IsPendingKill() == true)
+    if (ContextSystem->IsPendingKill())
     {
         return;
     }
@@ -3534,7 +3478,7 @@ void ADBDGameMode::UpdateJoinability(bool inGame)
     }
 
     // Verify the ServerInstance is valid (InternalIndex check in ASM)
-    if (ServerInstance->IsPendingKill() == true)
+    if (ServerInstance->IsPendingKill())
     {
         return;
     }
@@ -3543,7 +3487,7 @@ void ADBDGameMode::UpdateJoinability(bool inGame)
     // The disassembly loads addresses of global strings (likely static const)
     const FString* SessionState = nullptr;
 
-    if (inGame == true)
+    if (inGame)
     {
         /* UNDEFINED ELEMENT */
         // Referenced as SessionState__GAME_0 in disassembly

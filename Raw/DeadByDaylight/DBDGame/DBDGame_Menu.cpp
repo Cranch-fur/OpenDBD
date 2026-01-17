@@ -1,38 +1,3 @@
-ADBDGame_Menu::ADBDGame_Menu(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer) // call ??0AGameMode@@QEAA@AEBVFObjectInitializer@@@Z
-{
-    // .text:000000014023B8FE lea rax, ??_7ADBDGame_Menu@@6B@
-    // VTable pointer is set implicitly by the C++ compiler after the base constructor returns.
-
-    // .text:000000014023B905 mov word ptr [rbx+458h], 1
-    // This instruction writes 0x0001 to offset 0x458. 
-    // This covers both StartWithSlasher (0x458) and _introCamPlayed (0x459).
-    // 0x458 = 1 (true), 0x459 = 0 (false).
-    this->StartWithSlasher = true;
-    this->_introCamPlayed = false;
-
-    // .text:000000014023B918 mov byte ptr [rbx+45Ah], 0
-    // Sets the enum _gameIntroSteps to 0 (Idling).
-    this->_gameIntroSteps = EGameIntroSteps::Idling;
-
-    // .text:000000014023B91F call ?GetPrivateStaticClass@ADBDPlayerController_Menu...
-    // .text:000000014023B92B mov [rbx+3F0h], rax
-    // Offset 0x3F0 corresponds to AGameMode::PlayerControllerClass.
-    // The ASM calls GetPrivateStaticClass with L"/Script/DeadByDaylight". 
-    // In functional UE4 C++, this matches the ::StaticClass() call.
-    this->PlayerControllerClass = ADBDPlayerController_Menu::StaticClass();
-
-    // .text:000000014023B932 call ?GetPrivateStaticClass@ADBDPlayerState_Menu...
-    // .text:000000014023B937 mov [rbx+408h], rax
-    // Offset 0x408 corresponds to AGameMode::PlayerStateClass.
-    this->PlayerStateClass = ADBDPlayerState_Menu::StaticClass();
-
-    // .text:000000014023B93E mov rax, rbx
-    // Return this (standard constructor behavior).
-}
-
-
-
-
 TSubclassOf<AGameSession> ADBDGame_Menu::GetGameSessionClass() const
 {
     // .text:0000000140257366 lea this, aScriptDeadbyda ; "/Script/DeadByDaylight"
@@ -69,20 +34,20 @@ void ADBDGame_Menu::PostInitializeComponents()
 
     // .text:000000014026D9D8 ja loc_14026DAD4
     // If the Cast failed, DBDGameInstance will be nullptr.
-    if (DBDGameInstance != nullptr)
+    if (DBDGameInstance)
     {
         // .text:000000014026DA10 mov r8, [rdi+3B0h]
         // Accessing member variable '_contextSystem' at offset 0x3B0.
         // IDA Pseudo: contextSystem = GameInstance->_contextSystem;
         // Note: The pseudo code implies UDBDGameInstance has a member _contextSystem.
-        if (DBDGameInstance->_contextSystem != nullptr)
+        if (DBDGameInstance->_contextSystem)
         {
             // .text:000000014026DA3F mov r10, [r8+90h]
             // Accessing member variable 'm_OnlineSystemHandler' from the context system at offset 0x90.
             // IDA Pseudo: m_OnlineSystemHandler = contextSystem->m_OnlineSystemHandler;
             UOnlineSystemHandler* OnlineSystemHandler = DBDGameInstance->_contextSystem->m_OnlineSystemHandler;
 
-            if (OnlineSystemHandler != nullptr)
+            if (OnlineSystemHandler)
             {
                 // .text:000000014026DA94 call ?EndSessionOnReturnToMenu@UOnlineSystemHandler@@QEAAXXZ
                 // Mangled name implies: public: void __cdecl UOnlineSystemHandler::EndSessionOnReturnToMenu(void)
@@ -95,7 +60,7 @@ void ADBDGame_Menu::PostInitializeComponents()
         // IDA Pseudo: persistentData = GameInstance->_persistentData;
         UDBDPersistentData* PersistentData = DBDGameInstance->_persistentData;
 
-        if (PersistentData != nullptr)
+        if (PersistentData)
         {
             // .text:000000014026DACF call ?ClearNonLocalPlayerPersistentData@UDBDPersistentData@@QEAAXXZ
             // Mangled name implies: public: void __cdecl UDBDPersistentData::ClearNonLocalPlayerPersistentData(void)
@@ -140,7 +105,7 @@ void ADBDGame_Menu::PostSeamlessTravel()
     // VTable call at offset 0x108 corresponds to GetWorld().
     UWorld* World = this->GetWorld();
 
-    if (World != nullptr)
+    if (World)
     {
         // .text:000000014026E57A call ?GetPlayerControllerIterator@UWorld...
         // .text:000000014026E583 ... loop logic ...
@@ -194,7 +159,7 @@ void ADBDGame_Menu::SetMatineeIntro()
         // .text:000000014027353F jnz loc_1402735EF
         // Offset 0x140 corresponds to AActor bitfields. Bit 4 corresponds to bAutoDestroyWhenFinished.
         // The code jumps to the end (skips assignment) if this bit is set.
-        if (MatineeActor->bAutoDestroyWhenFinished == true)
+        if (MatineeActor->bAutoDestroyWhenFinished)
         {
             continue;
         }
@@ -317,7 +282,7 @@ void ADBDGame_Menu::Tick(float DeltaSeconds)
 
             // .text:0000000140279627 call qword ptr [rax+5B0h]
             // Play the loop sequence.
-            if (this->_matineeLoopActor != nullptr)
+            if (this->_matineeLoopActor)
             {
                 this->_matineeLoopActor->Play();
             }
@@ -382,7 +347,7 @@ void ADBDGame_Menu::UpdatePlayerData(APlayerController* PlayerController)
         // Access UDBDGameInstance->_persistentData (Offset 0x3B8).
         UDBDPersistentData* PersistentData = DBDGameInstance->_persistentData;
 
-        if (PersistentData != nullptr)
+        if (PersistentData)
         {
             // .text:000000014027B9F8 call ?ResetPreviousValues@FPlayerPersistentData@@QEAAXXZ
             // Reset cached values in the local persistent data struct.
@@ -415,7 +380,7 @@ void ADBDGame_Menu::UpdatePlayerData(APlayerController* PlayerController)
         {
             // .text:000000014027BA79 mov this, [r14+3C0h]
             // Access UDBDGameInstance->_playerDataFacade (Offset 0x3C0).
-            if (DBDGameInstance->_playerDataFacade != nullptr)
+            if (DBDGameInstance->_playerDataFacade)
             {
                 // .text:000000014027BA82 call ?ConditionalReloadProfile@UPlayerDataStorageFacade@@QEAAX_N@Z
                 // Trigger profile reload. Arg (dl) is 1 (true).

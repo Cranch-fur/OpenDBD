@@ -1,17 +1,3 @@
-void ADBDGame_Lobby::ADBDGame_Lobby(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer)
-{
-	this->_timerValue = -1.f;
-	this->_forceStarted = false;
-	this->_playerConfigurationReady = false;
-	this->_checkReadyToTravel = false;
-	this->_mustInitgamePresetData = true;
-	this->PlayerControllerClass = ADBDPlayerController_Menu::StaticClass();
-	this->PlayerStateClass = ADBDPlayerState_Lobby::StaticClass();
-}
-
-
-
-
 void ADBDGame_Lobby::AddInactivePlayer(APlayerState* PlayerState, APlayerController* PC)
 {
 	UWorld* world = this->GetWorld();

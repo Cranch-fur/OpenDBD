@@ -1,39 +1,3 @@
-void ADBDGame_Start::ADBDGame_Start(const FObjectInitializer& ObjectInitializer) : Super(ObjectInitializer) // Calls AGameMode::AGameMode (0x14023B959)
-{
-    // The ASM manually initializes the VTable at 0x14023B965, which corresponds to the C++ constructor body entry.
-
-    // Initialize primitive types. 
-    // The ASM zeroes out registers and moves them into offsets 0x4A0-0x500.
-    // While the Delegate (OnDBDInitComplete) and FDelegateHandles have their own constructors,
-    // the code below explicitly sets the simple byte flags as seen in _D and _I.
-
-    // Offset: 0x4D0
-    this->_loadProgress = 0; // false
-
-    // Offset: 0x4D2
-    this->_deferredError = 0; // false
-
-    // Note: The DelegateHandles (_timeoutHandle, _generateAuthTicketHandle, etc.) 
-    // are zero-initialized by the ASM (xor eax, eax -> mov [rbx+Offset]).
-    // In standard C++, their default constructors handle this invalidation.
-
-    /* Configuration of GameMode standard classes.
-       The ASM calls GetPrivateStaticClass for specific custom classes and assigns them
-       to the inherited AGameMode members PlayerControllerClass (0x3F0) and PlayerStateClass (0x408).
-    */
-
-    // Address: 0x14023B9C0
-    // Sets this->PlayerControllerClass to ADBDPlayerControllerBase::StaticClass()
-    this->PlayerControllerClass = ADBDPlayerControllerBase::StaticClass();
-
-    // Address: 0x14023B9D3
-    // Sets this->PlayerStateClass to ADBDPlayerState::StaticClass()
-    this->PlayerStateClass = ADBDPlayerState::StaticClass();
-}
-
-
-
-
 void ADBDGame_Start::AuthTicketReceived(AuthenticatedPresenceBase* Auth, bool Authority)
 {
     // Check if we have authority (ASM: test Authority, Authority)
@@ -82,7 +46,7 @@ void ADBDGame_Start::AuthTicketReceived(AuthenticatedPresenceBase* Auth, bool Au
     bool bCheck31 = CheckFunc31(InterfacePtr);
     bool bCheck38 = CheckFunc38(InterfacePtr);
 
-    if (bCheck20 == false || bCheck31 == true || bCheck38 == true)
+    if (bCheck20 == false || bCheck31 || bCheck38)
     {
         // Initialization Failed
         // Enum value 7 inferred from ASM (mov dl, 7)
@@ -149,7 +113,7 @@ void ADBDGame_Start::AuthTicketReceived(AuthenticatedPresenceBase* Auth, bool Au
 
     // Check flags on the passed Auth parameter
     // ASM: mov eax, [Auth+8]; shr eax, 1Dh; test al, 1
-    if (Auth != nullptr && Auth->IsPendingKill())
+    if (Auth && Auth->IsPendingKill())
     {
         this->GameInitComplete(FailedEAC);
         return;
@@ -200,27 +164,27 @@ void ADBDGame_Start::EACInitComplete(bool success)
     UGameInstance* GameInstance = this->GetGameInstance();
 
     // Verify GameInstance validity
-    if (GameInstance != nullptr)
+    if (GameInstance)
     {
         // Get the specific class for DBD Game Instance for type checking
         UClass* DBDGameInstanceClass = UDBDGameInstance::StaticClass();
 
         // Perform an optimized IsA check using ClassTree indices (UE4 internal logic)
         // Based on _D: sub edx, [rax+88h] / cmp edx, [rax+8Ch]
-        if (GameInstance->IsA(DBDGameInstanceClass) == true)
+        if (GameInstance->IsA(DBDGameInstanceClass))
         {
             // Check if the GameInstance object is still valid and not being destroyed
             // Based on _D: test al, 1 (checking FUObjectItem flags)
-            if (GUObjectArray.IsValidIndex(GameInstance->InternalIndex) == true)
+            if (GUObjectArray.IsValidIndex(GameInstance->InternalIndex))
             {
                 // Accessing EasyAntiCheat component (assumed at offset 0x500 of GameInstance based on _P/_I)
                 /* UNDEFINED ELEMENT */
                 UDBDEasyAntiCheat* EACComponent = GameInstance->_eac;
 
-                if (EACComponent != nullptr)
+                if (EACComponent)
                 {
                     // Verify EACComponent object validity in GUObjectArray
-                    if (GUObjectArray.IsValidIndex(EACComponent->InternalIndex) == true)
+                    if (GUObjectArray.IsValidIndex(EACComponent->InternalIndex))
                     {
                         // Remove the initialization delegate now that it has fired
                         // Based on _D: call TBaseMulticastDelegate::RemoveDelegateInstance
@@ -233,7 +197,7 @@ void ADBDGame_Start::EACInitComplete(bool success)
     }
 
     // Branching logic based on initialization success
-    if (success == true)
+    if (success)
     {
         // EAC was successful, proceed to profile loading
         this->InitPlayerProfile();
@@ -257,7 +221,7 @@ void ADBDGame_Start::GameInitComplete(ELoadCompleteState completionState)
     // Determine the correct TimerManager.
     // The disassembly checks the GameInstance first, then falls back to the World's TimerManager.
     FTimerManager* TimerManager = nullptr;
-    if (World->GetGameInstance() != nullptr)
+    if (World->GetGameInstance())
     {
         TimerManager = &World->GetGameInstance()->GetTimerManager();
     }
@@ -279,7 +243,7 @@ void ADBDGame_Start::GameInitComplete(ELoadCompleteState completionState)
         // Retrieve the Game Instance as a generic Actor -> GameInstance cast
         UGameInstance* GenericGameInstance = this->GetGameInstance();
 
-        if (GenericGameInstance != nullptr)
+        if (GenericGameInstance)
         {
             // The ASM performs a raw ClassTreeIndex check here to verify inheritance.
             // In standard C++, this is equivalent to checking if the instance is of type UDBDGameInstance.
@@ -287,12 +251,12 @@ void ADBDGame_Start::GameInitComplete(ELoadCompleteState completionState)
 
             // The ASM also checks GUObjectArray flags (0x20000000) to ensure the object is not Unreachable/PendingKill.
             // IsValid() covers these checks.
-            if (DBDGameInstance != nullptr && IsValid(DBDGameInstance) == true)
+            if (DBDGameInstance && IsValid(DBDGameInstance))
             {
                 // Retrieve persistent data for the local player
                 FPlayerPersistentData* PersistentData = DBDGameInstance->GetLocalPlayerPersistentData();
 
-                if (PersistentData != nullptr)
+                if (PersistentData)
                 {
                     // Validate the data. Second argument in ASM is 0 (false).
                     PersistentData->ValidateData(false);
@@ -336,7 +300,7 @@ void ADBDGame_Start::GameInitComplete(ELoadCompleteState completionState)
     }
 
     // Broadcast the completion delegate
-    if (this->OnDBDInitComplete.IsBound() == true)
+    if (this->OnDBDInitComplete.IsBound())
     {
         this->OnDBDInitComplete.Broadcast(completionState, this->_loadProgress);
     }
@@ -502,7 +466,7 @@ void ADBDGame_Start::InitPlayerProfile()
     // This is a custom member variable check not standard to UE4.
     bool bControllerFlag = (*(uint8*)((uint8*)LocalPlayerController + 0x140) & 0x4) != 0;
 
-    if (bControllerFlag == true)
+    if (bControllerFlag)
     {
         return;
     }
@@ -516,10 +480,10 @@ void ADBDGame_Start::InitPlayerProfile()
     // but the assembly performs pointer arithmetic on this address.
     uint8* PersistentDataManager = *(uint8**)((uint8*)DBDGameInstance + 0x3B8);
 
-    if (PersistentDataManager != nullptr)
+    if (PersistentDataManager)
     {
         // If PlayerState is valid, copy data to the Persistent Data Manager.
-        if (DBDPlayerState != nullptr)
+        if (DBDPlayerState)
         {
             // Call UDBDPersistentData::CopyData.
             // Argument 2: Pointer to destination/source at offset 0x168 of PersistentDataManager.
@@ -532,7 +496,7 @@ void ADBDGame_Start::InitPlayerProfile()
     }
 
     // Handle UniqueNetId and Online Presence.
-    if (DBDPlayerState != nullptr)
+    if (DBDPlayerState)
     {
         // Reference to the UniqueNetId from the PlayerState.
         // The assembly constructs a FUniqueNetIdRepl on the stack here.
@@ -565,7 +529,7 @@ void ADBDGame_Start::InitPlayerProfile()
     // We treat this as a generic pointer to access the delegate and members.
     UPlayerDataStorageFacade* StorageFacade = DBDGameInstance->_playerDataFacade;
 
-    if (StorageFacade != nullptr)
+    if (StorageFacade)
     {
         // Bind the OnPlayerProfileLoadComplete function to the delegate in StorageFacade.
         // Assembly calls ??$AddUObject@... (Delegate AddUObject).
@@ -577,7 +541,7 @@ void ADBDGame_Start::InitPlayerProfile()
         bool bIsLoadingProfile = StorageFacade->_isLoadingFile;
 
         // Log a warning if a load is ongoing and Verbosity is high enough.
-        if (bIsLoadingProfile == true)
+        if (bIsLoadingProfile)
         {
             // Check Log Verbosity (GameFlow category, Level 3/Warning).
             if (UE_LOG_ACTIVE(GameFlow, Warning))
@@ -695,24 +659,24 @@ void ADBDGame_Start::OnPlayerCurrenciesLoadComplete(bool success)
     UGameInstance* GameInstance = this->GetGameInstance();
 
     // Check if GameInstance is valid before proceeding
-    if (GameInstance != nullptr)
+    if (GameInstance)
     {
         // Cast to the project-specific GameInstance
         UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(GameInstance);
 
         // Ensure the cast was successful and the object is valid (not pending kill)
-        if (DBDGameInstance != nullptr)
+        if (DBDGameInstance)
         {
-            if (IsValid(DBDGameInstance) == true)
+            if (IsValid(DBDGameInstance))
             {
                 // Get the local Player Controller
                 ADBDPlayerControllerBase* LocalDBDPlayerController = DBDGameInstance->GetLocalDBDPlayerController();
 
                 // Check if the Player Controller exists
-                if (LocalDBDPlayerController != nullptr)
+                if (LocalDBDPlayerController)
                 {
                     // Ensure the Player Controller is valid
-                    if (IsValid(LocalDBDPlayerController) == true)
+                    if (IsValid(LocalDBDPlayerController))
                     {
                         // Check an internal state flag on the Player Controller (Offset 0x140, bit 4)
                         // If the flag is set (jne jump in disassembly), we skip the unbinding process.
@@ -743,7 +707,7 @@ void ADBDGame_Start::OnPlayerProfileLoadComplete(uint8_t success, const FString&
     // Retrieve the Game Instance to access global managers
     UGameInstance* GameInstance = this->GetGameInstance();
 
-    if (GameInstance != nullptr)
+    if (GameInstance)
     {
         UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(GameInstance);
 
@@ -812,28 +776,28 @@ void ADBDGame_Start::OnPlayerProfileLoadComplete(uint8_t success, const FString&
 
 void ADBDGame_Start::SendMirrorsAnalytics(uint8_t success, FString responseString, FDateTime callTime)
 {
-    // Создаем массив атрибутов (то, что в логе Original_7)
+    // Create an array of attributes (referred to as Original_7 in logs)
     TArray<FAnalyticsEventAttribute> attributes;
 
-    // Параметр Success_i (адрес 140272281)
+    // Parameter Success_i (address 140272281)
     attributes.Add(FAnalyticsEventAttribute(TEXT("Success_i"), (int32_t)success));
 
-    // Если неудача, добавляем Response_sz (адрес 1402722ac)
+    // If failure, add Response_sz (address 1402722ac)
     if (!success)
     {
         attributes.Add(FAnalyticsEventAttribute(TEXT("Response_sz"), responseString));
     }
 
-    // Вычисление разницы времени (адрес 140272352)
-    // % 0x3e8 в логе — это millisToRespond % 1000
+    // Calculate time difference (address 140272352)
+    // % 0x3e8 in the log is millisToRespond % 1000
     int32_t millisToRespond = (int32_t)((FDateTime::UtcNow().GetTicks() - callTime.GetTicks()) / 10000);
     attributes.Add(FAnalyticsEventAttribute(TEXT("MillisecondsToRespond_i"), millisToRespond % 1000));
 
-    // Отправка события (адрес 1402723da)
+    // Send event (address 1402723da)
     UBHVRAnalytics::RecordEvent(TEXT("MirrorsLoginRequest"), attributes);
 
-    // В логе в конце принудительно чистится responseString (140272442)
-    // В обычном коде это сделает деструктор FString в конце функции.
+    // In the log, responseString is forcibly cleared at the end (140272442)
+    // In standard code, the FString destructor handles this at the end of the function.
 }
 
 
@@ -841,19 +805,19 @@ void ADBDGame_Start::SendMirrorsAnalytics(uint8_t success, FString responseStrin
 
 void ADBDGame_Start::SetLoadProgress(ELoadProgress newProgress)
 {
-    // Устанавливаем новое значение прогресса
+    // Set the new progress value
     this->_loadProgress = newProgress;
 
-    // Проверяем уровень детализации логов категории GameFlow
-    // 5 соответствует уровню "Verbose" в Unreal Engine
+    // Check the verbosity level of the GameFlow log category
+    // 5 corresponds to the "Verbose" level in Unreal Engine
     if (GameFlow.Verbosity < Verbose)
         return;
 
-    // Преобразуем значение Enum в строку (например, ELoadProgress::Connecting -> "Connecting")
+    // Convert Enum value to string (e.g., ELoadProgress::Connecting -> "Connecting")
     FString progressString = Enum::ToString(newProgress);
 
-    // Вывод в лог через внутреннюю функцию Unreal Engine
-    // Аналог стандартного UE_LOG(LogGameFlow, Verbose, TEXT("[GameInit] New Init Progress: %s"), *progressString)
+    // Output to log via internal Unreal Engine function
+    // Equivalent to standard UE_LOG(LogGameFlow, Verbose, TEXT("[GameInit] New Init Progress: %s"), *progressString)
     UE_LOG(LogGameFlow, Verbose, TEXT("[GameInit] New Init Progress: %s"), *progressString);
 }
 
@@ -862,19 +826,26 @@ void ADBDGame_Start::SetLoadProgress(ELoadProgress newProgress)
 
 void ADBDGame_Start::StartPlay()
 {
+    // Call the parent class implementation
     Super::StartPlay();
 
-    UGameInstance* rax = this->GetGameInstance();
-    
-    if (IsValid(rax))
-    {
-        UDBDGameInstance* rbx = Cast<UDBDGameInstance>(rax);
+    // Retrieve the current GameInstance
+    UGameInstance* GameInstance = this->GetGameInstance();
 
-        if(IsValid(rbx))
+    // Check if the GameInstance is valid
+    if (IsValid(GameInstance))
+    {
+        // Cast to the specific UDBDGameInstance class
+        UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(GameInstance);
+
+        // Check if the cast was successful (rbx is not null)
+        if (IsValid(DBDGameInstance))
         {
-            rbx->InitProceduralGenerationData();
+            // Initialize procedural generation data
+            DBDGameInstance->InitProceduralGenerationData();
         }
     }
 
+    // Check the status of the Online Subsystem
     DBDOnlineUtils::CheckOnlineSubsystem();
 }
