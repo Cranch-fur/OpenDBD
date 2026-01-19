@@ -889,3 +889,804 @@ void ADBDGame_Lobby::OnSessionDestroyed(FName SessionName, bool bWasSuccessful)
 
 
 
+void ADBDGame_Lobby::PostInitializeComponents()
+{
+    // Retrieve the Game Instance associated with this actor
+    UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(this->GetGameInstance());
+
+    // Check if the Game Instance exists
+    if (DBDGameInstance != nullptr)
+    {
+        // The disassembly performs a low-level check against GUObjectArray using the InternalIndex.
+        // It specifically checks bit 29 (0x1D) of the object flags (RF_PendingKill / RF_Garbage).
+        // If the bit is NOT set, the object is considered valid for this operation.
+        if (IsValid(DBDGameInstance) == true)
+        {
+            // Enable network connection checking with the first argument as true (1) and second as false (0)
+            DBDGameInstance->SetNetworkConnectionCheckingEnabled(true, false);
+        }
+    }
+
+    // Retrieve the Matchmaking Presence Subsystem via the OnlinePresencePlugin.
+    // The disassembly shows this returns a TSharedRef/TSharedPtr (struct return on stack).
+    TSharedRef<IMatchmakingPresenceSubsystem> MatchmakingSubsystem = IOnlinePresencePlugin::Matchmaking();
+
+    // Check if there is an existing session destroyed handle currently bound
+    if (this->_onSessionDestroyedHandle.IsValid() == true)
+    {
+        // Call the virtual function at offset 0x220 to remove the delegate using the existing handle.
+        // We reset the handle ID to 0 immediately after.
+        MatchmakingSubsystem->ClearOnDestroySessionCompleteDelegate_Handle(this->_onSessionDestroyedHandle);
+        this->_onSessionDestroyedHandle.Reset();
+    }
+
+    // Prepare the delegate for OnSessionDestroyed.
+    // The disassembly (0x14026d813 - 0x14026d8a6) performs complex memory allocation (TInlineAllocator)
+    // to construct the delegate payload, binding ADBDGame_Lobby::OnSessionDestroyed to 'this'.
+    FOnSessionDestroyedDelegate SessionDestroyedDelegate;
+    SessionDestroyedDelegate.BindUObject(this, &ADBDGame_Lobby::OnSessionDestroyed);
+
+    // Call the virtual function at offset 0x218 to add the new delegate.
+    // The return value is the new FDelegateHandle.
+    this->_onSessionDestroyedHandle = MatchmakingSubsystem->AddOnDestroySessionCompleteDelegate_Handle(SessionDestroyedDelegate);
+
+    // Call the parent class implementation.
+    // Note: The pseudo code shows the TSharedRef destructor logic happens after this call (scope end).
+    Super::PostInitializeComponents();
+}
+
+
+
+/* UNFINISHED FUNCTION */
+void ADBDGame_Lobby::PostLogin(APlayerController* NewPlayer)
+{
+    // Call the parent class implementation first
+    Super::PostLogin(NewPlayer);
+
+    // Retrieve the GameInstance and cast it to the project-specific class
+    UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(this->GetGameInstance());
+
+    // Check if the GameInstance is valid (corresponds to GUObjectArray checks in disassembly)
+    if (IsValid(DBDGameInstance) == true)
+    {
+        // Load the "OnlinePresence" module/plugin
+        // /* UNDEFINED ELEMENT */ - Loading specific module interface by name "OnlinePresence"
+        IOnlinePresencePlugin* OnlinePresenceModule = FModuleManager::LoadModuleChecked<IOnlinePresencePlugin>("OnlinePresence");
+
+        // Call a virtual function (offset 0xA0) on the module interface. 
+        // Likely checking if the presence service is available or enabled.
+        if (OnlinePresenceModule->IsConnected() == true)
+        {
+            // Retrieve and cast the PlayerState
+            ADBDPlayerState* DBDPlayerState = Cast<ADBDPlayerState>(NewPlayer->PlayerState);
+
+            // Verify PlayerState validity and check a specific state flag (offset 0x140, bit 4)
+            // If the flag is set (result != 0), the function exits early.
+            if (IsValid(DBDPlayerState) == true && (DBDPlayerState->bActorIsBeingDestroyed) == false)
+            {
+                // Initialize local persistent data structure
+                FPlayerPersistentData LocalPlayerData;
+
+                // Copy data from the PlayerState into the local structure
+                UDBDPersistentData::CopyData(DBDPlayerState, &LocalPlayerData, true);
+
+                // Increment reference count for UniqueNetId (handled by SharedPointer internals in asm)
+                // Retrieve persistent data from the GameInstance's manager (offset 0x3B8)
+                // /* UNDEFINED ELEMENT */ - 0x3B8 is likely UDBDPersistentDataManager
+                bool bHasPersistentData = DBDGameInstance->_persistentData->GetPlayerPersistentData(DBDPlayerState->UniqueId);
+
+                // Cast the controller to the project-specific base
+                ADBDPlayerControllerBase* DBDController = Cast<ADBDPlayerControllerBase>(NewPlayer);
+
+                // Authenticate the new player within the lobby logic
+                this->AuthenticateNewPlayer(DBDController);
+
+                // Check specific status in PersistentDataManager (0x3B8). Offset 0x30 might be an enum (e.g., AuthorizationStatus).
+                // If status is NOT 2, proceed with Anti-Cheat registration.
+                if (DBDGameInstance->_persistentData->_gamePersistentData.SessionInfos.GameType != SurvivorGroup)
+                {
+                    // Retrieve EasyAntiCheat instance from GameInstance offset 0x500
+                    UDBDEasyAntiCheat* EasyAntiCheat = DBDGameInstance->_eac;
+
+                    if (IsValid(EasyAntiCheat) == true)
+                    {
+                        // Check if the player is a local controller via VTable 0x628 (IsLocalController)
+                        // Also checks a bitfield at 0x3BC bit 1.
+                        if ((DBDController->bIsPlayerController) && DBDController->IsLocalController() == true)
+                        {
+                            EasyAntiCheat->CreateServer();
+                        }
+
+                        // Register the client with EAC authority
+                        FString AccountIdStr = DBDPlayerState->UniqueId->ToString();
+
+                        // /* UNDEFINED VTABLE */ - Calling FUniqueNetId::vtable+0x20 to get GUID string representation
+                        FString OwnerGuid = DBDPlayerState->UniqueId->ToString();
+
+                        EasyAntiCheat->Authority_RegisterClient(DBDController, DBDPlayerState->UniqueId, OwnerGuid);
+
+                        // Validate the server from the client's perspective
+                        DBDController->Client_ValidateServer();
+                    }
+                }
+
+                // If GetPlayerPersistentData returned false (or specific bit check), skip experience logic
+                // The asm checks var_3f8 (return of GetPlayerPersistentData) and the bitfield at 0x3bc.
+                if (bHasPersistentData == true && (DBDController->bIsPlayerController))
+                {
+                    // Check if this is a local controller again via VTable 0x628
+                    if (DBDController->IsLocalController() == true)
+                    {
+                        // Update previous skull counts from the persistent data
+                        LocalPlayerData.PreviousSlasherSkulls = LocalPlayerData.SlasherSkulls; // Mapping based on offset 0x48/0x4C logic in asm
+                        LocalPlayerData.PreviousCamperSkulls = LocalPlayerData.CamperSkulls;
+
+                        // Calculate Max Experience from Design Tunables
+                        int32 MaxExperience = 2147483647; // 0x7FFFFFFF
+                        UDBDDesignTunables* DesignTunables = DBDGameInstance->DesignTunables; // Offset 0xF0
+
+                        if (IsValid(DesignTunables) == true)
+                        {
+                            MaxExperience = DesignTunables->MaxExperience;
+                        }
+
+                        // Cap the previous experience if necessary
+                        if (LocalPlayerData.PreviousExperience < MaxExperience)
+                        {
+                            LocalPlayerData.PreviousExperience = MaxExperience;
+                        }
+
+                        // Copy data back to the PlayerState or PersistentData
+                        UDBDPersistentData::CopyData(&LocalPlayerData, DBDPlayerState, true);
+                    }
+                }
+
+                // Update the Persistent Data Manager with the modified local data
+                _persistentData->SetPlayerPersistentData(DBDPlayerState->UniqueId, &LocalPlayerData);
+
+                // Final profile loading logic based on controller type
+                if ((DBDController->bIsPlayerController) && DBDController->IsLocalController() == true)
+                {
+                    // Load full profile via facade (GameInstance offset 0x3C0)
+                    DBDGameInstance->_playerDataFacade->LoadFullProfile();
+
+                    DBDController->Local_LoadProfileStats();
+                    DBDController->ResetPreGameCachedValues();
+                }
+                else
+                {
+                    // Request profile from client
+                    DBDController->Client_RequestPlayerProfile();
+                }
+
+                // Destructors for LocalPlayerData and related structs (Rituals, Loadouts) are called implicitly here
+            }
+        }
+    }
+}
+
+
+
+/* UNFINISHED FUNCTION */
+void ADBDGame_Lobby::PostSeamlessTravel()
+{
+    // Call the parent class implementation
+    Super::PostSeamlessTravel();
+
+    // Retrieve the GameState and cast it to the project-specific class
+    ADBDGameState* DBDGameState = Cast<ADBDGameState>(this->GameState);
+
+    // Check if the GameState is valid (corresponds to IsValid/GUObjectArray checks in disassembly)
+    if (IsValid(DBDGameState) == true)
+    {
+        // Check a specific flag bit at offset 0x140 (Bit 2, value 4)
+        // The disassembly skips the update if this bit is set (jne). 
+        // Therefore, we execute if the bit is false.
+        if ((DBDGameState->bActorIsBeingDestroyed) == false)
+        {
+            DBDGameState->Server_UpdateGameRole();
+        }
+    }
+
+    // Retrieve the GameInstance and cast it to the project-specific class
+    UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(this->GetGameInstance());
+
+    // Check if the GameInstance is valid
+    if (IsValid(DBDGameInstance) == true)
+    {
+        // Access a manager at offset 0x3B8 (likely PersistentDataManager based on prior context)
+        UObject* Manager_0x3B8 = DBDGameInstance->_persistentData;
+
+        // Check if the manager at 0x3B8 is valid
+        if (IsValid(Manager_0x3B8) == true)
+        {
+            // Access a member at offset 0x3B0
+            UObject* Member_0x3B0 = DBDGameInstance->_contextSystem;
+
+            // Check if the member at 0x3B0 is valid
+            if (IsValid(Member_0x3B0) == true)
+            {
+                // Access a deeply nested UDBDServerInstance via pointer indirection
+                // 1. Get pointer at offset 0x90 from Member_0x3B0
+                // 2. Get pointer at offset 0x5F0 from that intermediate object
+                // /* UNDEFINED ELEMENT */ - Explicit pointer arithmetic used to replicate disassembly access
+                UOnlineSystemHandler* IntermediateObj = Member_0x3B0->m_OnlineSystemHandler;
+                UDBDServerInstance* DBDServerInstance = IntermediateObj->_serverInstance;
+
+                // Check if the ServerInstance is valid
+                if (IsValid(DBDServerInstance) == true)
+                {
+                    // Select the game type string based on a status byte at offset 0x30 in Manager_0x3B8
+                    // Disassembly logic: if ((Status - 1) <= 1) -> use String 2, else String 1
+                    // This implies: if Status is 1 or 2, use String 2.
+                    EGameType Status = Manager_0x3B8->_gamePersistentData.SessionInfos.GameType;
+                    FString GameType;
+
+                    if (Status == PartyMode || Status == SurvivorGroup)
+                    {
+                        GameType = FString(TEXT("/* UNDEFINED STR */ data_143584f88"));
+                    }
+                    else
+                    {
+                        GameType = FString(TEXT("/* UNDEFINED STR */ data_143584f78"));
+                    }
+
+                    // Update host settings on the server instance
+                    DBDServerInstance->UpdateHostSettings(GameType);
+                }
+            }
+        }
+    }
+}
+
+
+
+/* UNFINISHED FUNCTION */
+void ADBDGame_Lobby::PreLogin(const FString& Options, const FString& Address, const FUniqueNetIdRepl& UniqueId, FString& ErrorMessage)
+{
+    // Call the parent class implementation
+    Super::PreLogin(Options, Address, UniqueId, ErrorMessage);
+
+    // Retrieve the GameInstance and cast it to the project-specific class
+    UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(this->GetGameInstance());
+
+    // Check if the GameInstance is valid (corresponds to GUObjectArray checks in disassembly)
+    if (IsValid(DBDGameInstance) == true)
+    {
+        // Check if the lobby is currently in Party Mode
+        if (this->IsInPartyMode() == true)
+        {
+            // Check the lobby timer value
+            // The disassembly checks if _timerValue is between 0.0f and 5.9f (inclusive)
+            if (this->_timerValue >= 0.0f && this->_timerValue <= 5.9000001f)
+            {
+                // Convert a localized text (likely "Lobby is starting") to string and assign to ErrorMessage
+                // /* UNDEFINED ELEMENT */ - Accessing static FText data_143621820
+                ErrorMessage = FText::ToString(/* UNDEFINED ELEMENT */ LocalizedString_LobbyStarting);
+            }
+
+            // Retrieve the Local Player from the Game Instance
+            ULocalPlayer* LocalPlayer = DBDGameInstance->GetLocalPlayer();
+
+            // Check if the Local Player is valid
+            if (IsValid(LocalPlayer) == true)
+            {
+                // Access a manager at offset 0x3B8 (Likely UDBDOnlineManager or UDBDPersistentDataManager)
+                // /* UNDEFINED ELEMENT */ - Accessing member at 0x3B8
+                UDBDPersistentData* Manager_0x3B8 = DBDGameInstance->_persistentData;
+
+                if (Manager_0x3B8 != nullptr)
+                {
+                    // Check a boolean flag at offset 0x101 inside the manager (Likely bIsFriendsOnlyLobby)
+                    // /* UNDEFINED ELEMENT */ - Accessing bool at 0x101
+                    bool bCheckFriends = Manager_0x3B8->_gamePersistentData.GamePresetData._privateMatch;
+
+                    if (bCheckFriends != false)
+                    {
+                        // Check if the local player is friends with the incoming player
+                        // Passing ControllerId (offset 0xE0 of LocalPlayer) and the UniqueNetId object (offset 0x8 of FUniqueNetIdRepl)
+                        if (DBDOnlineUtils::IsLocalPlayerFriendWith(LocalPlayer->ControllerId, UniqueId.UniqueNetId) == false)
+                        {
+                            // If not friends, set the ErrorMessage (likely "Friends Only Lobby")
+                            // /* UNDEFINED ELEMENT */ - Accessing static FText data_143621838
+                            ErrorMessage = FText::ToString(/* UNDEFINED ELEMENT */ LocalizedString_FriendsOnly);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+
+
+void ADBDGame_Lobby::ReadyPlayersUp() const
+{
+    // Iterate through the player controller list in the world
+    // The disassembly calls UWorld::GetPlayerControllerIterator (vtable offset 0x108 usually for GetWorld() call before)
+    // and returns a container iterator structure.
+    for (FConstPlayerControllerIterator It = this->GetWorld()->GetPlayerControllerIterator(); It; ++It)
+    {
+        // Retrieve the controller weak pointer from the iterator
+        TWeakObjectPtr<APlayerController> PlayerControllerWeakPtr = *It;
+
+        // Resolve the weak pointer to a raw pointer
+        APlayerController* PlayerController = PlayerControllerWeakPtr.Get();
+
+        // Check if the resolved pointer is valid
+        if (IsValid(PlayerController) == true)
+        {
+            // Cast the controller to the specific menu controller class
+            // The disassembly explicitly checks ClassTreeIndex logic, which corresponds to Cast<T>
+            ADBDPlayerController_Menu* DBDMenuController = Cast<ADBDPlayerController_Menu>(PlayerController);
+
+            // Verify the cast succeeded
+            // The disassembly performs multiple IsValid/GUObjectArray checks on the casted pointer
+            // and also checks a specific bit flag at offset 0x140 (likely RF_PendingKill or similar internal flag).
+            // We encapsulate this in the standard IsValid() check.
+            if (IsValid(DBDMenuController) == true)
+            {
+                // Call SetPlayerReady with 'true' (1)
+                DBDMenuController->SetPlayerReady(true);
+            }
+        }
+    }
+}
+
+
+
+
+void ADBDGame_Lobby::ResetStartTimer()
+{
+    // Retrieve the GameState pointer. 
+    // In AGameMode, the GameState member is typically at offset 0x418 (depending on engine version/padding).
+    ADBDGameState* DBDGameState = Cast<ADBDGameState>(this->GameState);
+
+    // Reset the internal timer value to -1.0f.
+    // The constant 0xbf800000 in disassembly represents -1.0f in IEEE 754 floating point.
+    this->_timerValue = -1.0f;
+
+    // Check if the GameState is valid.
+    // The disassembly performs the standard IsValid() checks:
+    // 1. Null check
+    // 2. Class hierarchy check (Cast)
+    // 3. Global Object Array (GUObjectArray) index check
+    // 4. Object flags check (e.g., RF_PendingKill/RF_Garbage at offset 0x140)
+    if (IsValid(DBDGameState) == true)
+    {
+        // Convert the floating-point timer value to a signed integer (truncation).
+        // The instruction 'cvttss2si' performs this conversion.
+        int32 TimerValueAsInt = (int32)this->_timerValue;
+
+        // Update the member variable at offset 0x614 in ADBDGameState.
+        // This is likely a replicated integer representation of the timer.
+        DBDGameState->SecondsLeftInLobby = TimerValueAsInt;
+    }
+}
+
+
+
+
+void ADBDGame_Lobby::SendServerAuthTicketToClient(ADBDPlayerControllerBase* NewPlayer)
+{
+    // Retrieve the Game Instance and cast it to the project-specific class
+    UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(this->GetGameInstance());
+
+    // Validate the Game Instance
+    // The disassembly performs manual GUObjectArray checks which corresponds to IsValid()
+    if (IsValid(DBDGameInstance) == true)
+    {
+        // Retrieve the Authentication component from the Game Instance
+        // /* UNDEFINED ELEMENT */ - Custom accessor in UDBDGameInstance
+        UDBDAuthentication* Authentication = DBDGameInstance->GetAuthentication();
+
+        // Validate the Authentication component
+        if (IsValid(Authentication) == true)
+        {
+            // Create a local authentication ticket.
+            // The disassembly allocates space on the stack (var_28) for the return value, 
+            // indicating FAuthenticationInfo is a struct returned by value.
+            // /* UNDEFINED ELEMENT */ - Custom function in UDBDAuthentication
+            FAuthenticationInfo AuthTicket = Authentication->CreateLocalTicket();
+
+            // Send the ticket to the new player controller.
+            // The second argument '1' is passed as a boolean (true).
+            // /* UNDEFINED ELEMENT */ - Custom function in ADBDPlayerControllerBase
+            NewPlayer->SendAuthTicket(AuthTicket, true);
+
+            // The disassembly at the end (0x140272531+) handles the destructor for AuthTicket,
+            // specifically decrementing a SharedReferenceCount. 
+            // This is handled automatically in C++ when AuthTicket goes out of scope.
+        }
+    }
+}
+
+
+
+/* UNFINISHED FUNCTION */
+void ADBDGame_Lobby::StartPlay()
+{
+    // Call the parent class implementation first
+    Super::StartPlay();
+
+    // Retrieve the GameInstance and cast it to the project-specific class
+    UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(this->GetGameInstance());
+
+    // Check if the GameInstance is valid (corresponds to IsValid/GUObjectArray checks in disassembly)
+    if (IsValid(DBDGameInstance) == true)
+    {
+        // Access a member at offset 0x3B0 in the GameInstance
+        // /* UNDEFINED ELEMENT */ - Accessing member at 0x3B0. This seems to be an intermediate manager/object.
+        UGameFlowContextSystem* Member_0x3B0 = DBDGameInstance->_contextSystem;
+
+        // Check if the member at 0x3B0 is valid
+        if (IsValid(Member_0x3B0) == true)
+        {
+            // Access a deeply nested UDBDServerInstance via pointer indirection
+            // 1. Get pointer at offset 0x90 from Member_0x3B0 (likely another intermediate object)
+            // 2. Get pointer at offset 0x5F0 from that intermediate object to get UDBDServerInstance
+            // /* UNDEFINED ELEMENT */ - Explicit pointer arithmetic used to replicate disassembly access
+            UOnlineSystemHandler* IntermediateObj = Member_0x3B0->m_OnlineSystemHandler;
+
+            // Check if IntermediateObj is valid
+            // Note: The disassembly performs GUObjectArray validation on IntermediateObj (0x140277f72 - 0x140277f90)
+            // We model this as a standard IsValid check on the object itself if we could treat it as UObject*.
+            // Assuming IntermediateObj is a UObject* based on the context of GUObjectArray checks.
+            if (IsValid(IntermediateObj) == true)
+            {
+                // Retrieve the ServerInstance from offset 0x5F0
+                UDBDServerInstance* DBDServerInstance = IntermediateObj->_serverInstance;
+
+                // Check if the ServerInstance is valid
+                if (IsValid(DBDServerInstance) == true)
+                {
+                    // Update host settings on the server instance.
+                    // The disassembly passes a pointer to a specific string/data (data_143584f88).
+                    // Based on previous context (PostSeamlessTravel), this string is likely a GameType string.
+                    FString GameType(TEXT("/* UNDEFINED STR */ data_143584f88"));
+
+                    DBDServerInstance->UpdateHostSettings(GameType);
+                }
+            }
+        }
+    }
+}
+
+
+
+/* UNFINISHED FUNCTION */
+void ADBDGame_Lobby::StartTravel()
+{
+    // Call the iterator to get player controllers
+    // The disassembly calls vtable offset 0x108 (GetWorld) then GetPlayerControllerIterator
+    for (FConstPlayerControllerIterator It = this->GetWorld()->GetPlayerControllerIterator(); It; ++It)
+    {
+        // Resolve the weak pointer
+        TWeakObjectPtr<APlayerController> PlayerControllerWeakPtr = *It;
+        APlayerController* PlayerController = PlayerControllerWeakPtr.Get();
+
+        // Standard object validity checks
+        if (IsValid(PlayerController) == true)
+        {
+            // Check specific flag on the controller (offset 0x140 bit 4, likely RF_PendingKill/Garbage)
+            // If the flag is set (jne label), we skip valid logic and mark travel readiness.
+            // The disassembly structure is: if (valid) { ... } else { FAIL }
+            // If any check fails, it jumps to 0x140278547 which sets _checkReadyToTravel = 1
+            if ((PlayerController->bActorIsBeingDestroyed) == false)
+            {
+                // Cast to ADBDPlayerState
+                ADBDPlayerState* DBDPlayerState = Cast<ADBDPlayerState>(PlayerController->PlayerState);
+
+                // If PlayerState is invalid, or cast failed
+                if (IsValid(DBDPlayerState) == true)
+                {
+                    // Check if the player is ready to travel.
+                    // This is checking a boolean flag at offset 0x820 in ADBDPlayerState.
+                    // If flag is 0 (false), set _checkReadyToTravel = 1 and return.
+                    if (DBDPlayerState->IsReadyToTravel == false)
+                    {
+                        this->_checkReadyToTravel = true;
+                        return;
+                    }
+                }
+                else
+                {
+                    // PlayerState invalid/null -> Fail check
+                    this->_checkReadyToTravel = true;
+                    return;
+                }
+            }
+            else
+            {
+                // Controller invalid/pending kill -> Fail check
+                this->_checkReadyToTravel = true;
+                return;
+            }
+        }
+        else
+        {
+            // Controller pointer null -> Fail check
+            this->_checkReadyToTravel = true;
+            return;
+        }
+    }
+
+    // If loop completes without returning early, all players are ready.
+    this->_checkReadyToTravel = false;
+
+    // Retrieve GameInstance
+    UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(this->GetGameInstance());
+
+    if (IsValid(DBDGameInstance) == true)
+    {
+        // Access GameState pointer from lobby (offset 0x418 in disassembly usually refers to GameState)
+        AGameState* GameState = this->GameState;
+
+        if (IsValid(GameState) == true)
+        {
+            // Retrieve PlayerArray data from GameState
+            // The disassembly iterates the PlayerArray (TArray<APlayerState*>) manually.
+            // It counts the number of players based on their Role (offset 0x750 in PlayerState? likely GameSpecificRole).
+            int32 KillerCount = 0;
+            int32 SurvivorCount = 0;
+            int32 SpectatorCount = 0;
+
+            for (APlayerState* PlayerState : GameState->PlayerArray)
+            {
+                if (IsValid(PlayerState) == true)
+                {
+                    // Cast to ADBDPlayerState to access role
+                    ADBDPlayerState* DBDState = Cast<ADBDPlayerState>(PlayerState);
+                    if (DBDState)
+                    {
+                        // Check Role (offset 0x750 based on disassembly logic)
+                        // The disassembly checks byte at 0x750.
+                        // Logic:
+                        // val - 1 == 0 -> val = 1 (Killer?) -> Increment RBP (SurvivorCount/KillerCount mixed?)
+                        // val - 2 == 0 -> val = 2 (Survivor?) -> Increment R14 (SurvivorCount/KillerCount mixed?)
+                        // val == 3 (Spectator?) -> Increment RSI (SpectatorCount)
+                        // Note: The mapping of 1/2 to Killer/Survivor is inferred.
+                        // Based on logging: "Number of players (survivors + killers) = %d" is (R14 + RBP)
+                        EPlayerRole Role = DBDState->GameRole;
+
+                        if (Role == VE_Slasher) // Slasher/Killer
+                        {
+                            SurvivorCount++; // Variables named based on log sum
+                        }
+                        else if (Role == VE_Camper) // Camper/Survivor
+                        {
+                            KillerCount++;
+                        }
+                        else if (Role == VE_Observer) // Spectator
+                        {
+                            SpectatorCount++;
+                        }
+                    }
+                }
+            }
+
+            // Update persistent data manager in GameInstance (Offset 0x3B8)
+            // Offset 0x28 = Total Players (Survivors + Killers)
+            // Offset 0x2C = Spectators
+            UDBDPersistentData* PersistentManager = DBDGameInstance->_persistentData;
+            if (PersistentManager)
+            {
+                PersistentManager->_gamePersistentData.PlayerCount = SurvivorCount + KillerCount;
+                PersistentManager->_gamePersistentData.SpectatorCount = SpectatorCount;
+            }
+
+            // Logging if verbosity allows
+            // Accessing GameFlow global struct/object
+            if (/* UNDEFINED ELEMENT */ GameFlow.Verbosity >= 6)
+            {
+                UE_LOG(LogDBD, Log, TEXT("Number of players (survivors + killers) = %d"), SurvivorCount + KillerCount);
+                UE_LOG(LogDBD, Log, TEXT("Number of spectators = %d"), SpectatorCount);
+            }
+
+            // Server Instance Logic
+            // Access member at 0x3B0 in GameInstance -> then 0x90 -> then 0x5F0 (UDBDServerInstance)
+            // This replicates the pointer chasing in disassembly.
+            UGameFlowContextSystem* Obj3B0 = DBDGameInstance->_contextSystem;
+            if (Obj3B0)
+            {
+                UOnlineSystemHandler* Obj90 = Obj3B0->m_OnlineSystemHandler;
+                if (Obj90)
+                {
+                    UDBDServerInstance* ServerInstance = Obj90->_serverInstance;
+                    if (IsValid(ServerInstance) == true)
+                    {
+                        // Update Host Settings with a specific string
+                        // The string comes from data_143584f98
+                        FString HostSettingsString(TEXT("/* UNDEFINED STR */ data_143584f98"));
+                        ServerInstance->UpdateHostSettings(HostSettingsString);
+                    }
+                }
+            }
+
+            // Game Session Unregister
+            // Call virtual function at 0x660 on GameSession (UnregisterPlayer? or similar)
+            if (this->GameSession)
+            {
+                // Disassembly calls function at vtable+0x660 with SessionName as argument and 4 zeros.
+                // Assuming UnregisterPlayer(FName SessionName, UniqueId, ...)
+                this->GameSession->UpdateSessionJoinability(this->GameSession->SessionName, nullptr, false, false, false);
+            }
+        }
+    }
+
+    // Call Parent StartTravel or specific internal travel logic
+    // The disassembly calls vtable[0x21] which is likely GetWorld() again, 
+    // then creates a string/array (TArray<uint16_t>) and calls a function at offset 0x1F8 on the World object?
+    // Or it calls ADBDGame_Lobby::StartTravel internal.
+    // The end of the function (0x1402789c7) calls a virtual function on 'r14' (which was 'this' at start, then vtable[0x21] result).
+    // Let's assume standard Engine travel.
+
+    // Construct URL/String from data
+    // /* UNDEFINED ELEMENT */ - Construction of travel URL from data_1435850c0/b8/60/58
+
+    // this->ProcessServerTravel(URL); // High level equivalent
+}
+
+
+
+/* UNFINISHED FUNCTION */
+void ADBDGame_Lobby::Tick(float DeltaSeconds)
+{
+    // Call the parent class implementation first
+    Super::Tick(DeltaSeconds);
+
+    // Check if the lobby is waiting to travel to the match
+    if (this->_checkReadyToTravel != false)
+    {
+        this->CheckReadyToTravel();
+    }
+
+    // Load the OnlinePresence module to check connectivity/status
+    // /* UNDEFINED ELEMENT */ - Accessing IOnlinePresencePlugin (or similar) interface
+    IOnlinePresencePlugin* OnlinePresenceModule = FModuleManager::LoadModuleChecked<IOnlinePresencePlugin>("OnlinePresence");
+
+    // Call virtual function at 0xA0 (likely IsConnected or IsAvailable)
+    // If it returns false (0), we redirect to the splash screen.
+    if (OnlinePresenceModule->IsConnected() == false)
+    {
+        // Retrieve GameInstance
+        UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(this->GetGameInstance());
+
+        if (IsValid(DBDGameInstance) == true)
+        {
+            // Navigate back to the splash screen. 
+            // 0x29 (41) is passed as an argument, likely a specific EGameState or Reason enum.
+            DBDGameInstance->TravelToSplashScreen(0x29);
+        }
+        return;
+    }
+
+    // Retrieve the GameState
+    ADBDGameState* DBDGameState = Cast<ADBDGameState>(this->GameState);
+
+    if (IsValid(DBDGameState) == true)
+    {
+        // Handle Game Preset Data Initialization
+        if (this->_mustInitgamePresetData != false)
+        {
+            this->_mustInitgamePresetData = false;
+
+            UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(this->GetGameInstance());
+            if (IsValid(DBDGameInstance) == true)
+            {
+                // Access Persistent Data Manager at offset 0x3B8
+                UDBDPersistentData* PersistentDataManager = DBDGameInstance->_persistentData;
+
+                if (PersistentDataManager != nullptr)
+                {
+                    // Check a flag at offset 0x60. If 1, we might need to reset data.
+                    // /* UNDEFINED ELEMENT */ - Accessing bool at offset 0x60
+                    EGameType bFlag0x60 = PersistentDataManager->_gamePersistentData.LastSessionInfos.GameType;
+
+                    if (bFlag0x60 == PartyMode && DBDGameInstance->ShouldResetPlayerData() == false)
+                    {
+                        // Broadcast changes if we don't need to reset
+                        // /* UNDEFINED ELEMENT */ - Passing pointer to data at 0x90
+                        void* DataPtr = PersistentDataManager->_gamePersistentData.GamePresetData;
+                        DBDGameState->Authority_BroadcastMatchChanges(DataPtr);
+                    }
+                    else
+                    {
+                        // Initialize preset data
+                        DBDGameState->InitGamePresetData();
+                    }
+                }
+            }
+        }
+
+        // Check player configuration
+        // /* UNDEFINED ELEMENT */ - Accessing byte at 0x6EF in GameState
+        uint8 ConfigByte = DBDGameState->_playerDistributionReady;
+        this->CheckPlayerConfiguration(ConfigByte);
+
+        // --- Timer Logic ---
+
+        // Threshold constant used in comparisons (5.9000001f)
+        const float TimerThreshold = 5.9000001f;
+
+        // If the game hasn't been forced start, and the timer is above the threshold (or counting down)
+        if (this->_forceStarted == false && this->_timerValue > TimerThreshold)
+        {
+            // Party Mode Checks
+            if (this->IsInPartyMode() == false)
+            {
+                // If not in party mode, check if we have enough players (e.g. 5 for standard match)
+                if (DBDGameState->PlayerArray.Num() < 5)
+                {
+                    this->_timerValue = -1.0f;
+                }
+            }
+            else
+            {
+                // Survivor Groups Mode Checks
+                if (this->IsInSurvivorGroupsMode() == false)
+                {
+                    // If not survivor groups, check minimum player count (e.g. 2)
+                    if (DBDGameState->PlayerArray.Num() < 2)
+                    {
+                        this->_timerValue = -1.0f;
+                    }
+                }
+                else
+                {
+                    // Complex condition for Survivor Groups / Player Config
+                    if (this->IsInSurvivorGroupsMode() == true || this->_playerConfigurationReady == true)
+                    {
+                        if (this->IsInPartyMode() == true && this->_timerValue <= TimerThreshold)
+                        {
+                            this->_timerValue = -1.0f;
+                        }
+                    }
+                    else
+                    {
+                        this->_timerValue = -1.0f;
+                    }
+                }
+            }
+        }
+
+        // Timer Countdown
+        if (this->_timerValue > 0.0f)
+        {
+            float PreviousTimer = this->_timerValue;
+            this->_timerValue -= DeltaSeconds;
+
+            // If timer crossed the threshold (5.9s) downwards, ready up players
+            if (PreviousTimer >= TimerThreshold && this->_timerValue < TimerThreshold)
+            {
+                this->ReadyPlayersUp();
+            }
+
+            // Clamp to 0
+            if (this->_timerValue <= 0.0f)
+            {
+                this->_timerValue = 0.0f;
+            }
+        }
+
+        // --- Replication State Update ---
+
+        // Determine if the timer state is "Active/Running" (represented by 1) or "Stopped" (0)
+        // The disassembly compares _timerValue against 0.0f (via xmm6).
+        uint8 bTimerActive = (this->_timerValue > 0.0f) ? 1 : 0;
+
+        // Check and update a replicated byte at 0x612 in GameState
+        // /* UNDEFINED ELEMENT */ - Accessing Member_0x612 (likely bTimerActive replicated var)
+        uint8 ReplicatedStatePtr = DBDGameState->PlayersReadyToStart;
+
+        if (ReplicatedStatePtr != bTimerActive)
+        {
+            ReplicatedStatePtr = bTimerActive;
+        }
+
+        // Update the integer representation of the timer at 0x614 in GameState
+        // /* UNDEFINED ELEMENT */ - Accessing Member_0x614
+        DBDGameState->SecondsLeftInLobby = this->_timerValue;
+    }
+}

@@ -23,5 +23,4 @@ ADBDGame_Lobby::ResetStartTimer
 ADBDGame_Lobby::SendServerAuthTicketToClient
 ADBDGame_Lobby::StartPlay
 ADBDGame_Lobby::StartTravel
-ADBDGame_Lobby::StaticRegisterNativesADBDGame_Lobby
 ADBDGame_Lobby::Tick
