@@ -1,0 +1,3 @@
+ADBDDebugGameMode::GetDefaultPawnClassForController_Implementation
+ADBDDebugGameMode::SpawnDefaultPawnFor_Implementation
+ADBDDebugGameMode::StartNewPlayer
