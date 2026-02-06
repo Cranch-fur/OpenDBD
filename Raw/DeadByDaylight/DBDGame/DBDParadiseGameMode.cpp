@@ -91,7 +91,7 @@ void ADBDParadiseGameMode::HandleMatchHasStarted()
 
 
 
-
+/* UNFINISHED FUNCTION */
 FString ADBDParadiseGameMode::InitNewPlayer(APlayerController* NewPlayerController, const FUniqueNetIdRepl& UniqueId, const FString& Options, const FString& Portal)
 {
     // 140263c10 - 140263c70: Validate PlayerState casting
