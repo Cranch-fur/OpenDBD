@@ -240,3 +240,114 @@ void ADBDGameState::AddOnJoinSessionLogDelegate()
         }
     }
 }
+
+
+
+
+void ADBDGameState::AddOnLobbySessionFoundDelegate()
+{
+    if (this->_onLobbySessionFoundDelegateHandle.IsValid() == false)
+    {
+        const FName PresenceModuleName = FName("OnlinePresence");
+
+        IOnlinePresencePlugin* LoadedModule = FModuleManager::LoadModuleChecked<IOnlinePresencePlugin>(PresenceModuleName);
+
+        bool bIsModuleReady = LoadedModule->IsConnected();
+
+        if (bIsModuleReady == true)
+        {
+            TSharedRef<IMatchmakingPresenceSubsystem> MatchmakingSubsystem = LoadedModule->GetMatchmaking();
+
+            FLobbySessionFoundDelegate NewDelegate;
+            NewDelegate.BindUObject(this, &ADBDGameState::OnLobbySessionFound);
+
+            MatchmakingSubsystem->AddOnLobbySessionFoundDelegate_Handle(this->_onLobbySessionFoundDelegateHandle, NewDelegate);
+        }
+    }
+}
+
+
+
+
+void ADBDGameState::AddTrap(AInteractable* toAdd)
+{
+    // Add the provided interactable element (trap) to the array of traps
+    this->_traps.Add(toAdd);
+}
+
+
+
+
+void ADBDGameState::Authority_BroadcastMatchChanges(const FGamePresetData& gamePresetData)
+{
+    // Assign the new game preset data to the internal member variable
+    // Offset 0x758 in ADBDGameState structure
+    this->_gamePresetData = gamePresetData;
+
+    // Update all characters based on the newly provided preset data
+    this->UpdateCharactersFromGamePreset(gamePresetData);
+
+    // Call the replication notify function to handle logic 
+    // that should occur when the preset data changes
+    this->OnRep_GamePresetData();
+}
+
+
+
+
+void ADBDGameState::Authority_EnableObsession()
+{
+    // Proceed only if the server has authority (Role == ROLE_Authority, which equals 3)
+    if (this->Role == ROLE_Authority)
+    {
+        bool bRequiresGameInstanceCall = false;
+
+        // Check if obsession target is null
+        if (this->_obsessionTarget == nullptr)
+        {
+            bRequiresGameInstanceCall = true;
+        }
+        else
+        {
+            // Verify object validity, mimicking the GUObjectArray and bitfield checks from the disassembly.
+            // In Unreal Engine 4, these low-level flags correspond to PendingKill and destruction states.
+            if (this->_obsessionTarget->IsPendingKill() == true)
+            {
+                bRequiresGameInstanceCall = true;
+            }
+            else if (this->_obsessionTarget->bActorIsBeingDestroyed == true)
+            {
+                bRequiresGameInstanceCall = true;
+            }
+            else
+            {
+                /* UNDEFINED VTABLE */
+                // Calling an unknown virtual function at vtable offset 0x1070
+                bool bIsTargetValid = this->_obsessionTarget->IsValidImpl();
+
+                if (bIsTargetValid == false)
+                {
+                    bRequiresGameInstanceCall = true;
+                }
+            }
+        }
+
+        // If the target is invalid, null, or rejected by the virtual function, execute the fallback
+        if (bRequiresGameInstanceCall == true)
+        {
+            /* UNDEFINED ELEMENT */
+            // Reconstructing the TFunction (lambda) allocation from the disassembly
+            TFunction<void(class UDBDGameInstance*)> GameInstanceCallback = [this](class UDBDGameInstance* GameInstance)
+                {
+                    // The lambda body is not contained within this function's disassembly
+                };
+
+            /* UNDEFINED ELEMENT */
+            UDBDUtilities::CallIfGameInstanceValid(this, GameInstanceCallback);
+        }
+    }
+}
+
+
+
+
