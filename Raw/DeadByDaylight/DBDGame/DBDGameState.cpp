@@ -351,3 +351,314 @@ void ADBDGameState::Authority_EnableObsession()
 
 
 
+void ADBDGameState::Authority_EscapeThroughHatch()
+{
+    // Retrieve the UWorld instance from the VTable.
+    // The VTable at offset 0x108 maps directly to GetWorld().
+    UWorld* World = this->GetWorld();
+
+    if (World == nullptr)
+    {
+        return;
+    }
+
+    // Retrieve the OwningGameInstance from UWorld (offset 0x120 in UE 4.13).
+    UGameInstance* BaseGameInstance = World->GetGameInstance();
+
+    if (BaseGameInstance == nullptr)
+    {
+        return;
+    }
+
+    // Safely cast the base GameInstance to UDBDGameInstance.
+    // The disassembly uses GUObjectArray checks, which is Unreal Engine's standard internal validation for Cast<T>.
+    /* UNREAL AUTO GENERATED FUNCTION */
+    UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(BaseGameInstance);
+
+    if (DBDGameInstance == nullptr)
+    {
+        return;
+    }
+
+    // Check if the server possesses authority.
+    // Offset 0x110 in AActor corresponds to the Role property, and 3 is ROLE_Authority.
+    if (this->Role == ROLE_Authority)
+    {
+        // Increment the counter for campers who escaped through the hatch.
+        this->_camperEscapedThroughHatch += 1;
+
+        // Check if exactly 4 campers have escaped.
+        if (this->_camperEscapedThroughHatch == 4)
+        {
+            // Iterate through the array of connected player states.
+            for (APlayerState* PlayerState : this->PlayerArray)
+            {
+                if (PlayerState == nullptr)
+                {
+                    continue;
+                }
+
+                // Safely cast the generic APlayerState to ADBDPlayerState.
+                /* UNREAL AUTO GENERATED FUNCTION */
+                ADBDPlayerState* DBDPlayerState = Cast<ADBDPlayerState>(PlayerState);
+
+                if (DBDPlayerState == nullptr)
+                {
+                    continue;
+                }
+
+                // Check if the actor is currently pending destruction.
+                // Offset 0x140 bit 2 (0x4) evaluates bActorIsBeingDestroyed in the AActor bitfield.
+                if (DBDPlayerState->bActorIsBeingDestroyed == false)
+                {
+                    // Retrieve an undefined status byte from the player state.
+                    /* UNDEFINED ELEMENT */
+                    EPlayerRole PlayerStatus = DBDPlayerState->GameRole;
+
+                    // Proceed if the player status is equal to 2.
+                    if (PlayerStatus == VE_Camper)
+                    {
+                        // Retrieve the Owner of the PlayerState, which is typically the PlayerController.
+                        // Offset 0x90 in AActor is the Owner property.
+                        AActor* OwnerActor = DBDPlayerState->GetOwner();
+
+                        if (OwnerActor == nullptr)
+                        {
+                            continue;
+                        }
+
+                        // Safely cast the owner to ADBDPlayerController.
+                        /* UNREAL AUTO GENERATED FUNCTION */
+                        ADBDPlayerController* PlayerController = Cast<ADBDPlayerController>(OwnerActor);
+
+                        if (PlayerController == nullptr)
+                        {
+                            continue;
+                        }
+
+                        // Retrieve the UGameEventTracker from the GameInstance at offset 0x108.
+                        /* UNDEFINED ELEMENT */
+                        UGameEventTracker* GameEventTracker = DBDGameInstance->GameEventTracker;
+
+                        if (GameEventTracker == nullptr)
+                        {
+                            continue;
+                        }
+
+                        // Retrieve an unknown target actor from the PlayerController at offset 0x388.
+                        /* UNDEFINED ELEMENT */
+                        APawn* TargetActor = PlayerController->Pawn;
+
+                        // Trigger the hatch escape game event.
+                        // Argument 1 (dl): 5 (DBDCamperScore_AllEscapeThroughHatch)
+                        // Argument 2 (xmm2): 1.0f
+                        // Argument 3 (r9): TargetActor
+                        // Argument 4 (stack): nullptr
+                        float EventValue = 1.0f;
+                        GameEventTracker->FireGameEvent(EDBDScoreTypes::DBDCamperScore_AllEscapeThroughHatch, EventValue, TargetActor, nullptr);
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+
+
+void ADBDGameState::Authority_EvaluateObsessionTarget(ADBDPlayer* potentialTarget)
+{
+    // Check if the server has authority.
+    // Role 3 typically corresponds to ROLE_Authority.
+    if (this->Role == ROLE_Authority)
+    {
+        // Ensure the potential target is a valid pointer.
+        if (potentialTarget == nullptr)
+        {
+            return;
+        }
+
+        // Safely cast the generic ADBDPlayer to ACamperPlayer.
+        // The disassembly uses ClassTreeIndex comparisons which is the internal UE representation of Cast<T>.
+        /* UNREAL AUTO GENERATED FUNCTION */
+        ACamperPlayer* CamperTarget = Cast<ACamperPlayer>(potentialTarget);
+
+        if (CamperTarget == nullptr)
+        {
+            return;
+        }
+
+        // Check if the potential target is currently pending destruction.
+        // Offset 0x140 bit 2 evaluates bActorIsBeingDestroyed in the AActor bitfield.
+        if (CamperTarget->bActorIsBeingDestroyed == true)
+        {
+            return;
+        }
+
+        // Call an undefined virtual function on the potential target at offset 0x1070.
+        // This likely evaluates a condition like CanBecomeObsession().
+        /* UNDEFINED VTABLE */
+        bool CamperTarget_IsValidImpl = CamperTarget->IsValidImpl();
+
+        if (CamperTarget_IsValidImpl == false)
+        {
+            return;
+        }
+
+        // Increment the total obsession weight pool.
+        this->_totalObsessionWeight += 1;
+
+        // If there is currently no obsession target, assign the new valid target immediately.
+        if (this->_obsessionTarget == nullptr)
+        {
+            this->_obsessionTarget = CamperTarget;
+            return;
+        }
+
+        // Check if the currently assigned obsession target is pending destruction.
+        if (this->_obsessionTarget->bActorIsBeingDestroyed == true)
+        {
+            this->_obsessionTarget = CamperTarget;
+            return;
+        }
+
+        // Evaluate the current obsession target using the same undefined virtual function.
+        /* UNDEFINED VTABLE */
+        bool _obsessionTarget_IsValidImpl = this->_obsessionTarget->IsValidImpl();
+
+        if (_obsessionTarget_IsValidImpl == false)
+        {
+            this->_obsessionTarget = CamperTarget;
+            return;
+        }
+
+        // Retrieve the priority weight for the current obsession target.
+        /* UNDEFINED ELEMENT */
+        float CurrentTargetWeight = this->_obsessionTarget->GetObsessionTargetWeight();
+
+        // If the weight is zero or negative, overwrite the target.
+        if (CurrentTargetWeight <= 0.0f)
+        {
+            this->_obsessionTarget = CamperTarget;
+            return;
+        }
+
+        // Reservoir sampling distribution logic to give the new target a chance to become the obsession.
+        if (this->_totalObsessionWeight > 0)
+        {
+            // Generate a random float based on standard C rand() normalized by RAND_MAX approximation.
+            /* UNDEFINED ELEMENT */
+            int32_t RandValue = rand();
+            float NormalizedRand = (float)RandValue * 0.0000305185094f;
+
+            // Calculate threshold using integer division as exactly specified in disassembly (idiv).
+            int32_t ThresholdInt = 1 / this->_totalObsessionWeight;
+            float ThresholdFloat = (float)ThresholdInt;
+
+            // Apply the threshold probability.
+            if (NormalizedRand <= ThresholdFloat)
+            {
+                this->_obsessionTarget = CamperTarget;
+            }
+        }
+    }
+}
+
+
+
+
+void ADBDGameState::Authority_SetActivatedGeneratorCount(int32_t value)
+{
+    // Check if the current instance has network authority.
+    // In Unreal Engine, ROLE_Authority corresponds to value 3.
+    // Using explicit boolean comparison to avoid the '!' operator.
+    if ((this->Role == ROLE_Authority) == false)
+    {
+        return;
+    }
+
+    // Cache the current generator count before updating.
+    int32_t cachedGeneratorCount = this->_activatedGeneratorCount;
+
+    // Apply the new value to the class member.
+    this->_activatedGeneratorCount = value;
+
+    // If the value did not change, exit the function to prevent unnecessary broadcasts.
+    if (cachedGeneratorCount == value)
+    {
+        return;
+    }
+
+    // Broadcast the standard C++ multicast delegate.
+    this->OnActivatedGeneratorCountChanged.Broadcast(value);
+
+    // Broadcast the dynamic multicast delegate.
+    // Note: The disassembly shows ProcessMulticastDelegate, which is the internal 
+    // Unreal Engine generated implementation for broadcasting dynamic delegates.
+    // In source code, this is simply written as .Broadcast().
+    this->OnActivatedGeneratorCountChangedDynamic.Broadcast(this->_activatedGeneratorCount);
+}
+
+
+
+
+void ADBDGameState::Authority_SetAllPlayerLoaded()
+{
+    // Check if the current instance has network authority.
+    // In Unreal Engine, ROLE_Authority corresponds to the integer value 3.
+    // Using explicit boolean comparison to strictly avoid the '!' operator.
+    if ((this->Role == ROLE_Authority) == false)
+    {
+        return;
+    }
+
+    // Broadcast the dynamic multicast delegate to notify listeners that all players have loaded.
+    // The disassembly shows a tailcall (jmp) to ProcessMulticastDelegate with a nullptr argument.
+    // ProcessMulticastDelegate is the Unreal Header Tool (UHT) generated backend for dynamic delegates,
+    // and passing nullptr simply indicates that this specific event takes no parameters.
+    this->AuthorityOnAllPlayerLoaded.Broadcast();
+}
+
+
+
+
+void ADBDGameState::Authority_SetHatchOpen(uint8_t opened)
+{
+    // Verify if the current instance has server authority (ROLE_Authority value is 3)
+    // We use explicit comparison with false to avoid using the "!" operator
+    if ((this->Role == ROLE_Authority) == false)
+    {
+        return;
+    }
+
+    // Update the internal hatch state with the provided parameter
+    this->_isHatchOpen = opened;
+
+    // Trigger the multicast delegate to notify all subscribed listeners about the state change
+    // C++ will handle the implicit cast from uint8_t to bool for the broadcast parameter
+    this->OnHatchOpened.Broadcast(opened);
+}
+
+
+
+
+void ADBDGameState::Authority_SetLevelReadyToPlay()
+{
+    // Verify if the current game state instance has server authority
+    // Explicitly checking against false to avoid the NOT operator
+    if ((this->Role == ROLE_Authority) == false)
+    {
+        return;
+    }
+
+    // Set the internal flag indicating the level is ready
+    this->_levelReadyToPlay = true;
+
+    // Trigger the multicast delegate. 
+    // In disassembly, this translates to ProcessMulticastDelegate, but in high-level C++ it is invoked via Broadcast.
+    this->OnLevelReadyToPlay.Broadcast();
+
+    // Proceed to the pre-level start logic
+    /* UNDEFINED ELEMENT */
+    this->OnBeforeLevelStarts();
+}

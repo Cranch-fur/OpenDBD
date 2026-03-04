@@ -1,3 +1,4 @@
+/* UNFINISHED CLASS FILE */
 class __base(AGameMode, 0) ADBDParadiseGameMode
 {
     struct ADBDParadiseGameMode::VTable* vtable;
