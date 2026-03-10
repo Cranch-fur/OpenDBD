@@ -1,0 +1,14 @@
+FDBDAnalogCursor::CenterCursor
+FDBDAnalogCursor::HandleAnalogInputEvent
+FDBDAnalogCursor::HandleKeyDownEvent
+FDBDAnalogCursor::HandleKeyUpEvent
+FDBDAnalogCursor::HandleMouseMoveEvent
+FDBDAnalogCursor::LockHorizontal
+FDBDAnalogCursor::LockVertical
+FDBDAnalogCursor::MoveCursorBy
+FDBDAnalogCursor::SetCursorSpeeds
+FDBDAnalogCursor::SetStickines
+FDBDAnalogCursor::Tick
+FDBDAnalogCursor::UpdateCursor
+FDBDAnalogCursor::SetCursorStickIgnore
+FDBDAnalogCursor::SetCursorDefaultSpeed
