@@ -1,0 +1,7 @@
+UDBDAuthentication::AuthenticateRemoteTicket
+UDBDAuthentication::CancelTickets
+UDBDAuthentication::CreateLocalTicket
+UDBDAuthentication::Initialize
+UDBDAuthentication::KickOrDisconnectPlayer
+UDBDAuthentication::OnPresenceLocalAuthDelegate
+UDBDAuthentication::OnPresenceRemoteAuthDelegate
