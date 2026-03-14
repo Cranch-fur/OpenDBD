@@ -662,3 +662,214 @@ void ADBDGameState::Authority_SetLevelReadyToPlay()
     /* UNDEFINED ELEMENT */
     this->OnBeforeLevelStarts();
 }
+
+
+
+
+void ADBDGameState::Authority_SetServerJoiningData(const FServerJoiningData* joiningData)
+{
+    // Copy the session ID directly from the provided struct
+    this->_serverJoiningData.SessionId = joiningData->SessionId;
+
+    // Copy the session ID string (Unreal Engine's TArray assignment operator is implicitly invoked)
+    this->_serverJoiningData.SessionIdStr = joiningData->SessionIdStr;
+
+    // Copy the current joining step (byte-sized enum)
+    this->_serverJoiningData.Step = joiningData->Step;
+
+    // Copy the server join settings (Unreal Engine's TArray assignment operator is implicitly invoked)
+    this->_serverJoiningData.Settings = joiningData->Settings;
+
+    // Store the step in a local variable for subsequent evaluations
+    EServerJoiningDataType step = this->_serverJoiningData.Step;
+
+    // Check if the killer server has been successfully found (Enum value 0x1)
+    if (step == EServerJoiningDataType::KillerServerFound)
+    {
+        // Tail call optimization executed in assembly via 'jmp'
+        this->KillerServerFound(&this->_serverJoiningData); /* UNDEFINED ELEMENT */
+        return;
+    }
+
+    // Check if the client state is set to travel to the killer (Enum value 0x2)
+    if (step == EServerJoiningDataType::TravelToKiller)
+    {
+        this->TravelToKillerServer(); /* UNDEFINED ELEMENT */
+    }
+}
+
+
+
+
+void ADBDGameState::Authority_SetSurvivorLeft(int32_t survivorRemaining)
+{
+    // Verify if the executing instance has network authority (3 represents ENetRole::ROLE_Authority)
+    if (this->Role == ROLE_Authority)
+    {
+        // Assign the new survivor count to the internal state variable
+        this->_survivorLeft = survivorRemaining;
+
+        // Package the parameter required for the delegate broadcast
+        int32_t Parameters = survivorRemaining;
+
+        // Trigger the delegate to notify all bound listeners that the survivor count has changed
+        // This is the underlying engine implementation of OnSurvivorsLeftChanged.Broadcast(survivorRemaining);
+        /* UNREAL AUTO GENERATED FUNCTION */
+        this->OnSurvivorsLeftChanged.ProcessMulticastDelegate<UObject>(&Parameters);
+    }
+}
+
+
+
+
+void ADBDGameState::Authority_SignalEscapeDoorActivated()
+{
+    // Check if the current game state has network authority (ROLE_Authority is typically 3)
+    // We explicitly use '== false' to avoid the '!' operator per the requirements.
+    if ((this->Role == ROLE_Authority) == false)
+    {
+        return;
+    }
+
+    // Mark the escape door as activated (uint8_t used as a boolean flag)
+    this->_escapeDoorActivated = true;
+
+    // Trigger the dynamic multicast delegate for the escape door activation
+    /* UNREAL AUTO GENERATED FUNCTION */
+    /* UNDEFINED ELEMENT */
+    this->OnEscapeDoorActivated.ProcessMulticastDelegate<UObject>(nullptr);
+
+    // Broadcast the standard multicast delegate to update the HUD
+    this->OnEscapeDoorActivatedHud.Broadcast();
+
+    // Retrieve the Game Instance associated with this actor
+    UGameInstance* gameInstance = this->GetGameInstance();
+
+    UDBDGameInstance* DBDGameInst = Cast<UDBDGameInstance>(gameInstance);
+
+    // Ensure the retrieved game instance pointer is valid before proceeding
+    if (DBDGameInst == nullptr)
+    {
+        return;
+    }
+
+    UGameEventTracker::FireGameEvent(
+        DBDGameInst->GameEventTracker, // Accessing an internal property (likely the Tracker instance) via direct offset 0x108
+        EDBDScoreTypes::DBDCamperScore_PowerExitGates,                                     // DBDCamperScore_PowerExitGates identifier (24 in decimal)
+        1.0f,                                     // Event value or weight
+        nullptr,
+        nullptr
+    );
+}
+
+
+
+
+void ADBDGameState::ClearOnFindFriendSessionCompleteDelegate()
+{
+    //is delegate handle valid check
+    if (this->_onFindFriendSessionCompleteDelegateHandle.IsValid() == false)
+    {
+        //preparing module name
+        const FName PresenceModuleName = FName("OnlinePresence");
+
+        //loading online presence module
+        IOnlinePresencePlugin* LoadedModule = FModuleManager::LoadModuleChecked<IOnlinePresencePlugin>(PresenceModuleName);
+
+        //checking if online presence module connected
+        bool bIsModuleReady = LoadedModule->IsConnected();
+
+        if (bIsModuleReady == true)
+        {
+            //getting matchmaking module subsystem
+            TSharedRef<IMatchmakingPresenceSubsystem> MatchmakingSubsystem = LoadedModule->GetMatchmaking();
+
+            //clearing delegate handle
+            MatchmakingSubsystem->ClearOnFindFriendSessionCompleteDelegate_Handle(&this->_onFindFriendSessionCompleteDelegateHandle);
+        }
+    }
+}
+
+
+
+
+void ADBDGameState::ClearOnJoinSessionCompleteDelegate()
+{
+    //is delegate handle valid check
+    if (this->_onJoinSessionsCompleteDelegateHandle.IsValid() == false)
+    {
+        //preparing module name
+        const FName PresenceModuleName = FName("OnlinePresence");
+
+        //loading online presence module
+        IOnlinePresencePlugin* LoadedModule = FModuleManager::LoadModuleChecked<IOnlinePresencePlugin>(PresenceModuleName);
+
+        //checking if online presence module connected
+        bool bIsModuleReady = LoadedModule->IsConnected();
+
+        if (bIsModuleReady == true)
+        {
+            //getting matchmaking module subsystem
+            TSharedRef<IMatchmakingPresenceSubsystem> MatchmakingSubsystem = LoadedModule->GetMatchmaking();
+
+            //clearing delegate handle
+            MatchmakingSubsystem->ClearOnJoinSessionCompleteDelegate_Handle(&this->_onJoinSessionsCompleteDelegateHandle);
+        }
+    }
+}
+
+
+
+
+void ADBDGameState::ClearOnJoinSessionLogDelegate()
+{
+    //is delegate handle valid check
+    if (this->_onJoinSessionLogDelegateHandle.IsValid() == false)
+    {
+        //preparing module name
+        const FName PresenceModuleName = FName("OnlinePresence");
+
+        //loading online presence module
+        IOnlinePresencePlugin* LoadedModule = FModuleManager::LoadModuleChecked<IOnlinePresencePlugin>(PresenceModuleName);
+
+        //checking if online presence module connected
+        bool bIsModuleReady = LoadedModule->IsConnected();
+
+        if (bIsModuleReady == true)
+        {
+            //getting matchmaking module subsystem
+            TSharedRef<IMatchmakingPresenceSubsystem> MatchmakingSubsystem = LoadedModule->GetMatchmaking();
+
+            //clearing delegate handle
+            MatchmakingSubsystem->ClearOnJoinSessionLogDelegate_Handle(&this->_onJoinSessionLogDelegateHandle);
+        }
+    }
+}
+
+
+
+
+void ADBDGameState::ClearOnLobbySessionFoundDelegate()
+{
+    //is delegate handle valid check
+    if (this->_onLobbySessionFoundDelegateHandle.IsValid() == false)
+    {
+        //preparing module name
+        const FName PresenceModuleName = FName("OnlinePresence");
+
+        //loading online presence module
+        IOnlinePresencePlugin* LoadedModule = FModuleManager::LoadModuleChecked<IOnlinePresencePlugin>(PresenceModuleName);
+
+        //checking if online presence module connected
+        bool bIsModuleReady = LoadedModule->IsConnected();
+
+        if (bIsModuleReady == true)
+        {
+            //getting matchmaking module subsystem
+            TSharedRef<IMatchmakingPresenceSubsystem> MatchmakingSubsystem = LoadedModule->GetMatchmaking();
+
+            //clearing delegate handle
+            MatchmakingSubsystem->ClearOnLobbySessionFoundDelegate_Handle(&this->_onLobbySessionFoundDelegateHandle);
+        }
+    }
+}
