@@ -873,3 +873,221 @@ void ADBDGameState::ClearOnLobbySessionFoundDelegate()
         }
     }
 }
+
+
+
+
+void ADBDGameState::DefaultTimer()
+{
+    // Call the parent class implementation to ensure the core game state timer logic is processed
+    AGameState::DefaultTimer();
+
+    // The assembly reads a 32-bit integer from offset 0x3a8 (which corresponds to ElapsedTime in AGameState)
+    // and converts it to a single-precision float using the 'cvtdq2ps' instruction.
+    float currentElapsedTime = this->ElapsedTime;
+
+    // Retrieve the global Wwise AkAudioDevice instance.
+    // This is part of the Wwise Audio plugin, which acts as an external integration in Unreal Engine.
+    /* UNDEFINED ELEMENT */
+    FAkAudioDevice* audioDevice = FAkAudioDevice::Get();
+
+    // Set the Real-Time Parameter Control (RTPC) value to update the game's audio system based on the elapsed match time.
+    // The assembly directly executes the call without a null check, pushing 0 and nullptr as the 4th and 5th arguments.
+    /* UNDEFINED ELEMENT */
+    audioDevice->SetRTPCValue(TEXT("AudioRTPC_Gameplay_Time"), currentElapsedTime, 0, nullptr);
+}
+
+
+
+
+float ADBDGameState::GetHeartbeatEmitterTerrorRadius(class AActor* emitter) const
+{
+    // Retrieve the GameInstance and cast it to UDBDGameInstance.
+    // The disassembly handles this via a ClassTreeIndex check (standard UE4 Cast operation).
+    UGameInstance* BaseGameInstance = this->GetGameInstance();
+    UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(BaseGameInstance);
+
+    // Verify if the Slasher (Killer) reference is populated.
+    if (this->Slasher == nullptr)
+    {
+        return 0.0f;
+    }
+
+    // Perform standard Unreal Engine object validity checks.
+    // In disassembly, this correlates to the GUObjectArray internal index and 'unreachable' bitwise checks.
+    if (IsValid(this->Slasher) == false)
+    {
+        return 0.0f;
+    }
+
+    // Verify that the Slasher is not currently pending destruction.
+    if (this->Slasher->bActorIsBeingDestroyed == true)
+    {
+        return 0.0f;
+    }
+
+    // Execute an unknown virtual function on the Slasher at offset 0x1070 to check state validity.
+    /* UNDEFINED VTABLE */
+    bool bIsSlasherStateValid = this->Slasher->IsValidImpl();
+
+    if (bIsSlasherStateValid == false)
+    {
+        return 0.0f;
+    }
+
+    // Validate that the cast to UDBDGameInstance was successful.
+    if (DBDGameInstance == nullptr)
+    {
+        return 0.0f;
+    }
+
+    // Verify that the Game Instance itself is valid and not pending kill.
+    if (IsValid(DBDGameInstance) == false)
+    {
+        return 0.0f;
+    }
+
+    // Retrieve the Design Tunables object from the Game Instance.
+    // The offset 0xF0 points to this data member inside the UDBDGameInstance class.
+    /* UNDEFINED ELEMENT */
+    UDBDDesignTunables* DesignTunables = DBDGameInstance->DesignTunables;
+
+    if (DesignTunables == nullptr)
+    {
+        return 0.0f;
+    }
+
+    if (IsValid(DesignTunables) == false)
+    {
+        return 0.0f;
+    }
+
+    // Retrieve the Perk Manager via an interface virtual function call at offset 0x10.
+    /* UNDEFINED VTABLE */
+    UPerkManager* PerkManager = this->Slasher->GetPerkManager_VTableFunc_0x10();
+
+    // Fetch the perk modifier specifically for the Terror Radius.
+    // VE_ModifyEmittersTerrorRadiusAdditive = 0x1E (30), VE_All = 0x4 (4).
+    /* UNDEFINED ELEMENT */
+    float PerkModifier = UPerkManager::GetPerkModifier(PerkManager, EGameplayModifierType::VE_ModifyEmittersTerrorRadiusAdditive, VE_All);
+
+    // Retrieve the tunable base value for the Terror Radius using a constant data reference.
+    /* UNDEFINED ELEMENT */
+    float TunableValue = UDBDDesignTunables::GetTunableValue(DesignTunables, data_143621c88, 0);
+
+    // The final Terror Radius is the sum of the base tunable value and any active perk modifiers.
+    return PerkModifier + TunableValue;
+}
+
+
+
+
+void ADBDGameState::GetLifetimeReplicatedProps(TArray<FLifetimeProperty>& OutLifetimeProps) const
+{
+    // Execute the parent class replication setup
+    AGameState::GetLifetimeReplicatedProps(OutLifetimeProps);
+
+    // The disassembled code represents the preprocessor expansion of the Unreal Engine DOREP_LIFETIME macros.
+    // For readable and functional C++ code in Unreal Engine 4.13, we restore the original macros.
+    // These macros natively handle the thread-safe static UProperty initialization, the ArrayDim iterators,
+    // and condition checks (cond == 0) found in the disassembly.
+    //
+    // Note: Because this uses static class macros, explicit "this->" pointers are not required or valid here.
+
+    DOREP_LIFETIME(ADBDGameState, _activatedGeneratorCount);
+    DOREP_LIFETIME(ADBDGameState, _builtLevelData);
+    DOREP_LIFETIME(ADBDGameState, _gameLevelLoaded);
+    DOREP_LIFETIME(ADBDGameState, _escapeDoorActivated);
+    DOREP_LIFETIME(ADBDGameState, _isHatchOpen);
+    DOREP_LIFETIME(ADBDGameState, _levelOfferings);
+    DOREP_LIFETIME(ADBDGameState, _levelReadyToPlay);
+    DOREP_LIFETIME(ADBDGameState, _playerDistributionReady);
+    DOREP_LIFETIME(ADBDGameState, _sessionId);
+    DOREP_LIFETIME(ADBDGameState, CamperCount);
+    DOREP_LIFETIME(ADBDGameState, CamperDeadCount);
+    DOREP_LIFETIME(ADBDGameState, CamperEscaped);
+    DOREP_LIFETIME(ADBDGameState, CamperInMeatLockerCount);
+    DOREP_LIFETIME(ADBDGameState, GeneratorNeeded);
+    DOREP_LIFETIME(ADBDGameState, IsGameEnded);
+    DOREP_LIFETIME(ADBDGameState, _survivorLeft);
+    DOREP_LIFETIME(ADBDGameState, PlayersReadyToStart);
+    DOREP_LIFETIME(ADBDGameState, SecondsLeftInLobby);
+    DOREP_LIFETIME(ADBDGameState, WaitingForEscape);
+    DOREP_LIFETIME(ADBDGameState, _obsessionTarget);
+    DOREP_LIFETIME(ADBDGameState, _serverJoiningData);
+    DOREP_LIFETIME(ADBDGameState, _gamePresetData);
+    DOREP_LIFETIME(ADBDGameState, _usingWeakenedMechanic);
+}
+
+
+
+
+APawn* ADBDGameState::GetLocalPlayerBasePawn() const
+{
+    // Access GetWorld() from the VTable (Offset 0x108 maps to GetWorld in UObject)
+    UWorld* World = this->GetWorld();
+
+    // The decompiled code assumes World is valid and directly accesses offset 0x120.
+    // In high-level C++, it is safer to perform an explicit check for nullptr first.
+    if (World == nullptr)
+    {
+        return nullptr;
+    }
+
+    // Retrieve OwningGameInstance from UWorld (Offset 0x120)
+    UGameInstance* GameInstance = World->OwningGameInstance;
+
+    if (GameInstance == nullptr)
+    {
+        return nullptr;
+    }
+
+    // Retrieve the UClass for the DeadByDaylight game instance
+    UClass* DBDGameInstanceClass = UDBDGameInstance::StaticClass(); /* UNREAL AUTO GENERATED FUNCTION */
+
+    // Perform an IsA check. The disassembly checks the ClassTreeIndex and ClassTreeNumChildren directly.
+    // In Unreal Engine C++, this is seamlessly handled by the IsA() method.
+    if (GameInstance->IsA(DBDGameInstanceClass) == false)
+    {
+        return nullptr;
+    }
+
+    // The disassembly manually checks the GUObjectArray to see if the GameInstance is pending kill (>> 0x1D & 1).
+    // The equivalent standard Unreal Engine method for this check is IsValid().
+    if (IsValid(GameInstance) == false)
+    {
+        return nullptr;
+    }
+
+    // Get the first local player controller.
+    // The disassembly calls this passing GameInstance as the context and nullptr as the argument.
+    APlayerController* PlayerController = GameInstance->GetFirstLocalPlayerController(nullptr);
+
+    if (PlayerController == nullptr)
+    {
+        return nullptr;
+    }
+
+    // The disassembly checks both the GUObjectArray (PendingKill flag) and the bActorIsBeingDestroyed flag (__bitfield140 & 4).
+    // Calling IsValid() on an Actor properly covers both of these checks in standard UE C++.
+    if (IsValid(PlayerController) == false)
+    {
+        return nullptr;
+    }
+
+    // Retrieve the pawn from the player controller (Offset 0x388)
+    APawn* Pawn = PlayerController->GetPawn();
+
+    if (Pawn == nullptr)
+    {
+        return nullptr;
+    }
+
+    // Finally, check if the Pawn is valid, pending kill, or being destroyed.
+    if (IsValid(Pawn) == false)
+    {
+        return nullptr;
+    }
+
+    return Pawn;
+}

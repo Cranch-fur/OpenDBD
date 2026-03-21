@@ -1,4 +1,3 @@
-/* UNFINISHED CLASS FILE */
 class __base(AGameState, 0) ADBDGameState
 {
 /* 0x0000 */    struct ADBDGameState::VTable* vtable;
