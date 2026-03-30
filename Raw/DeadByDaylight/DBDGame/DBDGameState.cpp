@@ -1091,3 +1091,451 @@ APawn* ADBDGameState::GetLocalPlayerBasePawn() const
 
     return Pawn;
 }
+
+
+
+
+ADBDPlayer* ADBDGameState::GetLocalPlayerPawn() const
+{
+    // Retrieve the UWorld object
+    class UWorld* World = this->GetWorld();
+
+    if (World == nullptr)
+    {
+        return nullptr;
+    }
+
+    // Access OwningGameInstance from UWorld
+    class UGameInstance* GameInstance = World->OwningGameInstance;
+
+    if (GameInstance == nullptr)
+    {
+        return nullptr;
+    }
+
+    // Cast GameInstance to UDBDGameInstance (generates the GetPrivateStaticClass and ClassTree checks in disassembly)
+    class UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(GameInstance);
+
+    if (DBDGameInstance == nullptr)
+    {
+        return nullptr;
+    }
+
+    // Retrieve the first local player controller
+    class APlayerController* PlayerController = GameInstance->GetFirstLocalPlayerController(nullptr);
+
+    // IsValid macro handles the GUObjectArray index bounds and bIsPendingKill checks seen in the disassembly
+    if (IsValid(PlayerController) == false)
+    {
+        return nullptr;
+    }
+
+    // Retrieve the Pawn attached to the PlayerController
+    class APawn* Pawn = PlayerController->Pawn;
+
+    if (IsValid(Pawn) == false)
+    {
+        return nullptr;
+    }
+
+    // Cast Pawn to ADBDPlayer (generates the ADBDPlayer::GetPrivateStaticClass check in disassembly)
+    class ADBDPlayer* DBDPlayer = Cast<ADBDPlayer>(Pawn);
+
+    if (DBDPlayer == nullptr)
+    {
+        return nullptr;
+    }
+
+    // Execute the virtual function located at VTable offset 0x1070 that returns a boolean
+    /* UNDEFINED VTABLE */
+    bool bConditionMet = DBDPlayer->IsValidImpl();
+
+    if (bConditionMet == false)
+    {
+        return nullptr;
+    }
+
+    return DBDPlayer;
+}
+
+
+
+
+ADBDPlayerState* ADBDGameState::GetLocalPlayerState() const
+{
+    // Get the World object from the current game state. The GetWorld() function is a standard
+    // virtual function in UObject, located at VTable index 0x108.
+    // In Unreal Engine, UWorld is the top-level object representing the simulation space.
+    UWorld* World = this->GetWorld();
+
+    // Check if the World object is valid. Without a world, we cannot get the game instance.
+    if (World == nullptr)
+    {
+        return nullptr;
+    }
+
+    // Get the UGameInstance from the UWorld object.
+    // UGameInstance is a high-level object that persists for the entire game session.
+    UGameInstance* GameInstance = World->GetGameInstance();
+
+    // Verify that the retrieved GameInstance is not null.
+    if (GameInstance == nullptr)
+    {
+        return nullptr;
+    }
+
+    // Attempt to cast the generic UGameInstance to our specific UDBDGameInstance.
+    // This is to ensure we are running within the expected game context.
+    UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(GameInstance);
+    if (DBDGameInstance == nullptr)
+    {
+        return nullptr;
+    }
+
+    // This function call is non-standard for Unreal Engine and its purpose is not clear from the context.
+    // It might be a custom engine modification or a specific game logic check.
+    /* UNDEFINED ELEMENT */
+    // if (FNullHttpRequest::GetContentLength(DBDGameInstance) <= 0)
+    // {
+    //     return nullptr;
+    // }
+
+    // Retrieve the first local player controller from the game instance.
+    // A local player controller is one that is controlled by the user on the current machine.
+    APlayerController* LocalPlayerController = DBDGameInstance->GetFirstLocalPlayerController();
+
+    // Check if the player controller was successfully retrieved.
+    if (LocalPlayerController == nullptr)
+    {
+        return nullptr;
+    }
+
+    // A check on a bitfield at offset 0x140 of the APlayerController object.
+    // This memory location in AActor corresponds to a union of several boolean flags.
+    // The check for bit 4 likely corresponds to checking if the actor is marked for destruction (bActorIsBeingDestroyed).
+    if (LocalPlayerController->IsPendingKillOrUnreachable() == true)
+    {
+        return nullptr;
+    }
+
+    // Get the APlayerState from the APlayerController. The PlayerState holds state information
+    // for a specific player, which is replicated across the network.
+    APlayerState* PlayerState = LocalPlayerController->PlayerState;
+
+    // Check if the PlayerState object is valid.
+    if (PlayerState == nullptr)
+    {
+        return nullptr;
+    }
+
+    // A check on a bitfield at offset 0x140 of the APlayerState object.
+    // Similar to the controller check, this is likely verifying the object is not pending destruction.
+    if (PlayerState->IsPendingKillOrUnreachable() == true)
+    {
+        return nullptr;
+    }
+
+    // Attempt to cast the generic APlayerState to our game-specific ADBDPlayerState.
+    // If the cast is successful, we have found the correct local player state.
+    ADBDPlayerState* DBDPlayerState = Cast<ADBDPlayerState>(PlayerState);
+    if (DBDPlayerState == nullptr)
+    {
+        return nullptr;
+    }
+
+    // Return the successfully found and validated local player state.
+    return DBDPlayerState;
+}
+
+
+
+
+int32 ADBDGameState::GetNumberOfActiveSurvivors() const
+{
+    // Initialize a counter for the number of active survivors.
+    int32 NumberOfActiveSurvivors = 0;
+
+    // The GetObjectsOfClass function is internally represented by this high-level Unreal Engine iterator.
+    // It finds all spawned instances of the specified class (ACamperPlayer) in the game world.
+    for (TObjectIterator<ACamperPlayer> It; It; ++It)
+    {
+        ACamperPlayer* CamperPlayer = *It;
+
+        // Check if the CamperPlayer object pointer is valid and the object itself is not being destroyed.
+        if (CamperPlayer != nullptr)
+        {
+            // Check if the survivor is neither dead nor in a special state called "paradise".
+            if (CamperPlayer->IsDead() == false && CamperPlayer->IsInParadise() == false)
+            {
+                // If the survivor is active, increment the counter.
+                NumberOfActiveSurvivors++;
+            }
+        }
+    }
+
+    // Return the final count of active survivors.
+    return NumberOfActiveSurvivors;
+}
+
+
+
+
+int32_t ADBDGameState::GetNumberOfOtherActiveSurvivors(class ACamperPlayer* exception) const
+{
+    // Array to hold the results of the search
+    TArray<UObject*> Results;
+
+    // Counter for the active survivors
+    int32_t activeSurvivorsCount = 0;
+
+    // Fetch all objects of class ACamperPlayer in the world
+    /* UNREAL AUTO GENERATED FUNCTION */
+    GetObjectsOfClass(ACamperPlayer::StaticClass(), Results, true, RF_ClassDefaultObject, EInternalObjectFlags::None);
+
+    // Iterate through all found objects
+    int32_t arrayNum = Results.Num();
+    for (int32_t i = 0; i < arrayNum; i = i + 1)
+    {
+        class ACamperPlayer* camperPlayer = (ACamperPlayer*)Results[i];
+
+        // Ensure the pointer is valid before accessing
+        if (camperPlayer == nullptr)
+        {
+            continue;
+        }
+
+        // The disassembly manually checks the FUObjectItem flags at offset 0x08, shifting by 0x1D (29).
+        // In Unreal Engine 4.13, bit 29 represents the RF_Unreachable flag.
+        // High-level equivalent uses the built-in UE4 safety checks.
+        bool isUnreachable = camperPlayer->IsUnreachable();
+        if (isUnreachable == false)
+        {
+            // Check if the camper is currently dead
+            /* UNDEFINED ELEMENT */
+            bool isDead = camperPlayer->IsDead();
+            if (isDead == false)
+            {
+                // Check if the camper is in paradise (sacrificed / disconnected state)
+                /* UNDEFINED ELEMENT */
+                bool isInParadise = camperPlayer->IsInParadise();
+                if (isInParadise == false)
+                {
+                    // If the camper is not the exception passed in the arguments, increment the count
+                    if (camperPlayer != exception)
+                    {
+                        activeSurvivorsCount++;
+                    }
+                }
+            }
+        }
+    }
+
+    // Results array memory (FMemory::Free in disassembly) is automatically freed by TArray destructor
+    return activeSurvivorsCount;
+}
+
+
+
+
+int32_t ADBDGameState::GetObserverCount() const
+{
+    int32_t observerCount = 0;
+
+    // Iterate through the PlayerArray to check each player's state.
+    // The low-level code iterates using pointer arithmetic from the array's data start to its end, 
+    // which translates to a standard range-based for loop in high-level Unreal Engine C++.
+    for (APlayerState* playerState : this->PlayerArray)
+    {
+        // Ensure the player state pointer is valid before proceeding.
+        if (playerState == nullptr)
+        {
+            continue;
+        }
+
+        // Attempt to cast the generic APlayerState to the Dead By Daylight specific ADBDPlayerState.
+        // The low-level assembly fetches the private static class and performs a ClassTreeIndex check against the object's ClassPrivate member.
+        // This is Unreal Engine's standard internal implementation for Cast<T>().
+        ADBDPlayerState* dbdPlayerState = Cast<ADBDPlayerState>(playerState);
+
+        // If the cast fails, it means the player state is not an ADBDPlayerState, so we skip it.
+        if (dbdPlayerState == nullptr)
+        {
+            continue;
+        }
+
+        // Check if the player is in the Observer state.
+        // The low-level code checks a specific byte at offset 0x750 against the value 3.
+        // Since the ADBDPlayerState structure is not provided, we access the memory address directly.
+        // In a complete high-level project, this would map to a designated property (e.g., dbdPlayerState->PlayerRole == EPlayerRole::Observer).
+        EPlayerRole observerStateField = dbdPlayerState->GameRole;
+
+        // Verify if the value matches the observer state (3).
+        if (*observerStateField == VE_Observer)
+        {
+            observerCount++;
+        }
+    }
+
+    return observerCount;
+}
+
+
+
+
+void ADBDGameState::GetPlayerRoleCounts(int32_t* survivorCount, int32_t* killerCount, int32_t* spectatorCount) const
+{
+    // Initialize the role counters to zero
+    *spectatorCount = 0;
+    *killerCount = 0;
+    *survivorCount = 0;
+
+    // Iterate through the PlayerArray (translating low-level array pointer arithmetic to standard range-based for loop)
+    for (APlayerState* PlayerState : this->PlayerArray)
+    {
+        // Check if the current PlayerState pointer is valid
+        if (PlayerState != nullptr)
+        {
+            // The low-level ClassTreeIndex and ClassTreeNumChildren calculation is an inlined IsA() check
+            if (PlayerState->IsA(ADBDPlayerState::StaticClass() /* UNREAL AUTO GENERATED FUNCTION */) == true)
+            {
+                // The low-level GUObjectArray bitshift check translates to IsPendingKill()
+                // The 0x140 offset bitfield check translates to bActorIsBeingDestroyed
+                if (PlayerState->IsPendingKill() == false && PlayerState->bActorIsBeingDestroyed == false)
+                {
+                    // Cast to the specific Dead by Daylight player state class
+                    ADBDPlayerState* DBDPlayerState = Cast<ADBDPlayerState>(PlayerState);
+
+                    if (DBDPlayerState != nullptr)
+                    {
+                        // Extract the player role enum/identifier from offset 0x750
+                        uint8_t PlayerRole = DBDPlayerState->GameRole; /* UNDEFINED ELEMENT */
+
+                        // Increment the respective counter based on the role identifier
+                        if (PlayerRole == 1)
+                        {
+                            *killerCount += 1;
+                        }
+                        else if (PlayerRole == 2)
+                        {
+                            *survivorCount += 1;
+                        }
+                        else if (PlayerRole == 3)
+                        {
+                            *spectatorCount += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+
+
+ADBDPlayerState* ADBDGameState::GetPlayerStateByIDString(class FString* id) const
+{
+    // Check if there are any players in the array
+    if (this->PlayerArray.Num() > 0)
+    {
+        // Iterate through all connected players
+        for (int32 i = 0; i < this->PlayerArray.Num(); ++i)
+        {
+            APlayerState* playerState = this->PlayerArray[i];
+
+            // Proceed only if the player state pointer is valid
+            if (playerState != nullptr)
+            {
+                // Cast the base player state to the game-specific player state.
+                // This replaces the inline GUObjectArray and ClassTreeIndex low-level checks.
+                ADBDPlayerState* dbdPlayerState = Cast<ADBDPlayerState>(playerState);
+
+                if (dbdPlayerState != nullptr)
+                {
+                    // Retrieve the underlying FUniqueNetId from the UniqueId wrapper.
+                    // The offset 0x3E0 corresponds to the object pointer inside TSharedPtr.
+                    const FUniqueNetId* uniqueNetId = dbdPlayerState->UniqueId.GetUniqueNetId().Get();
+
+                    if (uniqueNetId != nullptr)
+                    {
+                        /* UNDEFINED VTABLE */
+                        // Offset 0x18: virtual bool IsValid() const
+                        bool bIsValid = uniqueNetId->IsValid();
+
+                        if (bIsValid == true)
+                        {
+                            /* UNDEFINED VTABLE */
+                            // Offset 0x10: virtual int32 GetSize() const
+                            int32 idSize = uniqueNetId->GetSize();
+
+                            if (idSize > 0)
+                            {
+                                /* UNDEFINED VTABLE */
+                                // Offset 0x8: virtual const uint8* GetBytes() const
+                                const uint8* idBytes = uniqueNetId->GetBytes();
+
+                                if (idBytes != nullptr)
+                                {
+                                    FString resultString;
+                                    int32 newMax = idSize * 2;
+
+                                    // Prepare the FString buffer to hold the hex representation
+                                    if (newMax != 0)
+                                    {
+                                        resultString.GetCharArray().ResizeTo(newMax);
+                                    }
+
+                                    if (idSize != 0)
+                                    {
+                                        for (int32 j = 0; j < idSize; ++j)
+                                        {
+                                            /* UNDEFINED ELEMENT */
+                                            // Custom or non-standard utility function to convert a byte to hex
+                                            ByteToHex(idBytes[j], &resultString);
+                                        }
+                                    }
+
+                                    // Compare the generated hex string with the target ID.
+                                    // The FString operator== handles the case-insensitive Stricmp automatically.
+                                    if (resultString == *id)
+                                    {
+                                        return dbdPlayerState;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Return nullptr if no matching player state is found
+    return nullptr;
+}
+
+
+
+
+bool ADBDGameState::GetSelectedOffering(int32 index, FSelectedOffering* selectedOffering) const
+{
+    // Validate the index against the current size of the offerings array.
+    // The disassembly compares index (edx) with the ArrayNum (offset 0x670).
+    if (index >= this->_levelOfferings.Offerings.Num())
+    {
+        return false;
+    }
+
+    // Ensure the output destination is not a null pointer before attempting to copy.
+    if (selectedOffering == nullptr)
+    {
+        return false;
+    }
+
+    // Access the internal data allocator and copy the structure.
+    // The assembly uses a 128-bit move (movups xmm0) to copy the 16-byte FSelectedOffering structure.
+    // In high-level C++, this is equivalent to a standard assignment.
+    *selectedOffering = this->_levelOfferings.Offerings[index];
+
+    return true;
+}
