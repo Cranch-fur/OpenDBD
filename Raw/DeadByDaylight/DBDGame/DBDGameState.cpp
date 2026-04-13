@@ -1539,3 +1539,316 @@ bool ADBDGameState::GetSelectedOffering(int32 index, FSelectedOffering* selected
 
     return true;
 }
+
+
+
+
+void ADBDGameState::HandleSurvivorGroupTransition()
+{
+    // vtable + 0x108 is GetWorld()
+    UWorld* World = this->GetWorld();
+
+    // Offset 0xF0 in UWorld is typically the NetDriver or a similar core object in UE 4.13
+    // We check if it is valid.
+    AGameMode* UnknownWorldObject = World->AuthorityGameMode; /* UNDEFINED ELEMENT */
+
+    // High-level macro for inline GUObjectArray validity and pending kill checks
+    if (!IsValid(UnknownWorldObject) || UnknownWorldObject->IsPendingKill())
+    {
+        return;
+    }
+
+    if (this->_currentSurvivorGroupTransitionStep != ESurvivorGroupTransitionSteps::JoiningKiller)
+    {
+        if (this->_currentSurvivorGroupTransitionStep == ESurvivorGroupTransitionSteps::TravellingToKiller && this->PlayerArray.Num() == 1)
+        {
+            this->_currentSurvivorGroupTransitionStep = ESurvivorGroupTransitionSteps::Idle;
+
+            // Offset 0x120 in UWorld is typically GameState
+            ADBDGameState* CurrentGameState = Cast<ADBDGameState>(World->OwningGameInstance); /* UNDEFINED ELEMENT */
+
+            if (IsValid(CurrentGameState))
+            {
+                if (CurrentGameState->PlayerArray.Num() > 0)
+                {
+                    APlayerState* FirstPlayerState = CurrentGameState->PlayerArray[0];
+                    if (IsValid(FirstPlayerState))
+                    {
+                        // 0x90 offset in PlayerState or similar custom component
+                        UOnlineSystemHandler* OnlineHandler = Cast<UOnlineSystemHandler>(FirstPlayerState->Owner); /* UNDEFINED ELEMENT */
+                        if (IsValid(OnlineHandler))
+                        {
+                            // data_143621a20 likely represents a session name or similar FName/String
+                            FName SessionName = FName("SWF_TravellingSWFHost_szni"); /* UNDEFINED ELEMENT */
+                            OnlineHandler->TravelToSession(SessionName);
+
+                            FString AnalyticsEventString = TEXT("SWF_TravellingSWFHost_szni");
+                            TArray<FAnalyticsEventAttribute> AnalyticsAttributes;
+                            AnalyticsAttributes.Add(FAnalyticsEventAttribute(TEXT("SessionId"), this->_serverJoiningData.SessionIdStr));
+
+                            UBHVRAnalytics::RecordEvent(AnalyticsEventString, AnalyticsAttributes); /* UNDEFINED ELEMENT */
+                        }
+                    }
+                }
+            }
+        }
+
+        FString AnalyticsEventString = TEXT("SurviveWithFriend");
+        TArray<FAnalyticsEventAttribute> AnalyticsAttributes;
+        UBHVRAnalytics::RecordEvent(AnalyticsEventString, AnalyticsAttributes); /* UNDEFINED ELEMENT */
+    }
+    else
+    {
+        bool bAllPlayersReady = true;
+
+        for (int32 i = 0; i < this->PlayerArray.Num(); ++i)
+        {
+            ADBDPlayerState* DBDPlayerState = Cast<ADBDPlayerState>(this->PlayerArray[i]);
+            if (IsValid(DBDPlayerState))
+            {
+                // 0x9A2 is likely a custom replicated property representing player readiness or connection state in DBDPlayerState
+                EKillerJoiningState PlayerStateStatus = DBDPlayerState->_killerJoiningState; /* UNDEFINED ELEMENT */
+                if (PlayerStateStatus == EKillerJoiningState::Disconnected)
+                {
+                    bAllPlayersReady = false;
+                }
+            }
+        }
+
+        if (bAllPlayersReady == false)
+        {
+            return;
+        }
+
+        bool bShouldTravel = false;
+
+        for (int32 i = 0; i < this->PlayerArray.Num(); ++i)
+        {
+            ADBDPlayerState* DBDPlayerState = Cast<ADBDPlayerState>(this->PlayerArray[i]);
+            if (IsValid(DBDPlayerState))
+            {
+                EKillerJoiningState PlayerStateStatus = DBDPlayerState->_killerJoiningState; /* UNDEFINED ELEMENT */
+                if (PlayerStateStatus == EKillerJoiningState::ConnectionFailed)
+                {
+                    bShouldTravel = true;
+                    break;
+                }
+            }
+        }
+
+        if (bShouldTravel == true)
+        {
+            this->_currentSurvivorGroupTransitionStep = ESurvivorGroupTransitionSteps::TravellingToKiller;
+            this->_travelToKillerServer = true;
+
+            this->SetGameType(EGameType::Online); /* UNDEFINED ELEMENT */
+
+            FGuid SessionIdCopy = this->_serverJoiningData.SessionId;
+            FString SessionIdStrCopy = this->_serverJoiningData.SessionIdStr;
+
+            this->_serverJoiningData.SessionIdStr.Empty();
+            this->_serverJoiningData.Step = EServerJoiningDataType::TravelToKiller;
+            this->_serverJoiningData.Settings.Empty();
+
+            if (this->_serverJoiningData.Step == EServerJoiningDataType::KillerServerFound)
+            {
+                this->KillerServerFound(&this->_serverJoiningData);
+            }
+            else if (this->_serverJoiningData.Step == EServerJoiningDataType::TravelToKiller)
+            {
+                this->TravelToKillerServer();
+            }
+
+            FString AnalyticsEventString = TEXT("SWF_TravelSWF_MembersToKiller_szni");
+            TArray<FAnalyticsEventAttribute> AnalyticsAttributes;
+            AnalyticsAttributes.Add(FAnalyticsEventAttribute(TEXT("SessionId"), this->_serverJoiningData.SessionIdStr));
+
+            UBHVRAnalytics::RecordEvent(AnalyticsEventString, AnalyticsAttributes); /* UNDEFINED ELEMENT */
+        }
+        else
+        {
+            for (int32 i = 0; i < this->PlayerArray.Num(); ++i)
+            {
+                ADBDPlayerState* DBDPlayerState = Cast<ADBDPlayerState>(this->PlayerArray[i]);
+                if (IsValid(DBDPlayerState))
+                {
+                    DBDPlayerState->_killerJoiningState = Disconnected; /* UNDEFINED ELEMENT */
+                }
+            }
+
+            this->_currentSurvivorGroupTransitionStep = ESurvivorGroupTransitionSteps::Idle;
+            this->_serverJoiningData.SessionIdStr.Empty();
+            this->_serverJoiningData.Step = EServerJoiningDataType::Idle;
+            this->_serverJoiningData.Settings.Empty();
+
+            if (this->_serverJoiningData.Step == EServerJoiningDataType::KillerServerFound)
+            {
+                this->KillerServerFound(&this->_serverJoiningData);
+            }
+            else if (this->_serverJoiningData.Step == EServerJoiningDataType::TravelToKiller)
+            {
+                this->TravelToKillerServer();
+            }
+
+            this->Multicast_JoinKillerServerFailed();
+
+            ADBDGameState* CurrentGameState = Cast<ADBDGameState>(World->GetGameState()); /* UNDEFINED ELEMENT */
+            if (IsValid(CurrentGameState))
+            {
+                if (CurrentGameState->PlayerArray.Num() > 0)
+                {
+                    APlayerState* FirstPlayerState = CurrentGameState->PlayerArray[0];
+                    if (IsValid(FirstPlayerState))
+                    {
+                        // 0x578 in UOnlineSystemHandler or custom class check
+                        UOnlineSystemHandler* OnlineHandler = Cast<UOnlineSystemHandler>(FirstPlayerState->Owner); /* UNDEFINED ELEMENT */
+                        if (IsValid(OnlineHandler))
+                        {
+                            bool HandlerStatus = OnlineHandler->_quickmatchCancelled; /* UNDEFINED ELEMENT */
+                            if (HandlerStatus == false)
+                            {
+                                this->_killerServerSearchAttempt += 1;
+
+                                UGameInstance* GameInstance = this->GetGameInstance();
+                                ULocalPlayer* FirstPlayer = GameInstance->GetFirstGamePlayer();
+
+                                FString SessionIdOut;
+                                OnlineHandler->StartQuickmatch(FirstPlayer, this->PlayerArray.Num(), 0, SessionIdOut, 0xFFFFFFFF); /* UNDEFINED ELEMENT */
+                            }
+                        }
+                    }
+                }
+            }
+
+            FString JoinFailedStr = TEXT("SWF_KillerServerJoinedFailed_Id_szni");
+            FString AnalyticsEventString = TEXT("SWF_JoinKillerConnectionFailed_SteamId_szni");
+
+            TArray<FAnalyticsEventAttribute> AnalyticsAttributes;
+            // 0x738 is likely an array of JoinedKillerIds or similar property
+            TArray<uint32> JoinedIds = this->JoinedKillerIds;
+
+            // Convert to string or appropriate format to record
+            FString JoinedIdsString;
+            /* UNDEFINED ELEMENT */ // Formatting logic omitted in low-level
+
+            AnalyticsAttributes.Add(FAnalyticsEventAttribute(TEXT("JoinedKillers"), JoinedIdsString));
+            UBHVRAnalytics::RecordEvent(AnalyticsEventString, AnalyticsAttributes); /* UNDEFINED ELEMENT */
+        }
+    }
+}
+
+
+
+
+void ADBDGameState::InitGamePresetData()
+{
+    // Retrieve the UWorld instance using the VTable function at offset 0x108.
+    // According to the provided VTable, 0x108 corresponds to UWorld* GetWorld(UObject*).
+    UWorld* CurrentWorld = this->GetWorld();
+
+    if (CurrentWorld == nullptr)
+    {
+        return;
+    }
+
+    // Retrieve the GameInstance from the World. 
+    // In Unreal Engine, OwningGameInstance is typically located at offset 0x120 in UWorld.
+    // We use a Cast to ensure it's specifically a UDBDGameInstance.
+    UDBDGameInstance* GameInstance = Cast<UDBDGameInstance>(CurrentWorld->GetGameInstance());
+
+    // Check if the cast was successful and the GameInstance exists
+    if (GameInstance == nullptr)
+    {
+        return;
+    }
+
+    // The assembly performs a class tree index check:
+    // gameInstance->ClassPrivate->ClassTreeIndex - rax_2->ClassTreeIndex > rax_2->ClassTreeNumChildren
+    // This is the low-level implementation of Unreal Engine's IsA() function.
+    // We replace the low-level tree check with the standard high-level IsA() call.
+    if (GameInstance->IsA(UDBDGameInstance::StaticClass()) == false)
+    {
+        return;
+    }
+
+    // The assembly performs a bitwise check against GUObjectArray.ObjObjects.Objects[InternalIndex]
+    // Specifically checking if the object is reachable/valid and not pending kill or garbage collected.
+    // This translates to the high-level IsValid() global function in Unreal Engine.
+    if (IsValid(GameInstance) == false)
+    {
+        return;
+    }
+
+    // Initialize the GamePresetData structure belonging to this GameState, passing the GameInstance.
+    /* UNDEFINED ELEMENT */
+    FGamePresetData* presetdata_ptr = &this->_gamePresetData;
+    presetdata_ptr->Init(GameInstance);
+
+    // Apply the newly initialized GamePresetData to the PersistentData stored within the GameInstance.
+    /* UNDEFINED ELEMENT */
+    GameInstance->_persistentData->ApplyGamePresetData(presetdata_ptr);
+}
+
+
+
+
+void ADBDGameState::IntroCompleted()
+{
+    // Check if the intro has already been completed or the game has ended
+    if (this->_introCompleted == true || this->IsGameEnded == true)
+    {
+        return;
+    }
+
+    // Mark the intro as completed
+    this->_introCompleted = true;
+
+    // Retrieve the current UWorld instance via the VTable method
+    UWorld* World = this->GetWorld();
+
+    // Retrieve the GameInstance and perform a safe cast to our custom game instance class
+    UDBDGameInstance* GameInstance = Cast<UDBDGameInstance>(World->GetGameInstance());
+
+    // Abort if the GameInstance is null
+    if (GameInstance == nullptr)
+    {
+        return;
+    }
+
+    // Iterate through all the Player Controllers in the current world
+    for (FConstPlayerControllerIterator Iterator = World->GetPlayerControllerIterator(); Iterator; ++Iterator)
+    {
+        APlayerController* PlayerController = Iterator->Get();
+
+        // High-level engine check: resolves underlying GUObjectArray, PendingKill, and Unreachable checks
+        if (IsValid(PlayerController) == true)
+        {
+            // The method called at offset 0x628 of APlayerController's VTable is not standard or is deeply custom.
+            // Often used for checks like IsLocalController() or HasClientLoadedCurrentWorld().
+            if (PlayerController->IsLocalController() == true)
+            {
+                // Retrieve player data using a property at offset 0x388.
+                // In UE 4.13 APlayerController, this is likely an extended PlayerState or custom PlayerData component.
+                /* UNDEFINED ELEMENT */
+                UDBDPlayerData* PlayerData = UDBDPlayerData::GetPlayerData(PlayerController->Pawn);
+
+                // High-level engine check for the retrieved PlayerData object
+                if (IsValid(PlayerData) == true)
+                {
+                    PlayerData->SetIntroCompleted();
+                }
+            }
+        }
+    }
+
+    // Finally, notify the Game Instance that the intro is complete and online multiplayer is starting
+    GameInstance->OnEnteringOnlineMultiplayer();
+}
+
+
+
+
+bool ADBDGameState::IsEscapeDoorActivated()
+{
+    return this->_escapeDoorActivated;
+}
