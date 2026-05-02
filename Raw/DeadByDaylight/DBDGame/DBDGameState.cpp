@@ -1852,3 +1852,962 @@ bool ADBDGameState::IsEscapeDoorActivated()
 {
     return this->_escapeDoorActivated;
 }
+
+
+
+
+bool ADBDGameState::IsEscapeDoorOpen() const
+{
+    // Retrieve the current Dead By Daylight Game Mode. 
+    // The disassembly shows 'xor ecx, ecx' prior to the call, passing nullptr as the WorldContextObject.
+    ADBDGameMode* GameMode = UDBDUtilities::GetDBDGameMode(nullptr); /* UNDEFINED ELEMENT */
+
+    // Ensure the pointer is valid before attempting to access its properties
+    if (GameMode != nullptr)
+    {
+        // The disassembly manually accesses GUObjectArray.ObjObjects.Objects and bitshifts by 0x1D (29).
+        // In UE4, the 29th bit flag corresponds to EInternalObjectFlags::PendingKill.
+        if (GameMode->IsPendingKill() == false)
+        {
+            // The disassembly also checks the 3rd bit (0x4) at offset 0x140.
+            // Based on the structure, this corresponds to the bActorIsBeingDestroyed property.
+            if (GameMode->bActorIsBeingDestroyed == false)
+            {
+                // Both validity checks passed, return the state of the escape door
+                return GameMode->EscapeOpened;
+            }
+        }
+    }
+
+    // Return 0 (false) if the GameMode is null, pending kill, or currently being destroyed
+    return 0;
+}
+
+
+
+
+bool ADBDGameState::IsHatchOpen() const
+{
+    return this->_isHatchOpen;
+}
+
+
+
+
+bool ADBDGameState::IsHatchVisible() const
+{
+    return (this->_activatedGeneratorCount > this->_survivorLeft);
+}
+
+
+
+
+bool ADBDGameState::IsLevelReady()
+{
+    // Retrieve the UWorld object.
+    // The disassembly accesses the VTable at offset 0x108.
+    // According to the VTable dump, 0x108 corresponds to UObject::GetWorld().
+    UWorld* World = this->GetWorld();
+
+    // The decompiled code uses GetPrivateStaticClass and manually checks ClassTreeIndex and ClassTreeNumChildren.
+    // This is Unreal Engine's standard inline behavior for Cast<UDBDGameInstance>().
+    UDBDGameInstance* DBDGameInstance = nullptr;
+
+    if (World != nullptr)
+    {
+        // Offset 0x120 in UWorld conventionally points to OwningGameInstance in UE4.
+        UGameInstance* GameInstance = World->GetGameInstance();
+        DBDGameInstance = Cast<UDBDGameInstance>(GameInstance);
+    }
+
+    // Check if the game instance cast was successful
+    if (DBDGameInstance != nullptr)
+    {
+        // We can now access the Builder directly via the struct member
+        if (DBDGameInstance->Builder.IsValid() == true)
+        {
+            // Retrieve the actual AProceduralLevelBuilder object
+            AProceduralLevelBuilder* ProceduralLevelBuilder = DBDGameInstance->Builder.Get();
+
+            if (ProceduralLevelBuilder != nullptr)
+            {
+                // Call HasLevelBeenSpawned to determine if the level generation is complete.
+                /* UNDEFINED ELEMENT */
+                bool bIsLevelSpawned = ProceduralLevelBuilder->HasLevelBeenSpawned(&(this->_builtLevelData.Dependencies), this->_builtLevelData.TileCount);
+
+                // If the level has not been spawned, return false (0)
+                if (bIsLevelSpawned == false)
+                {
+                    return false;
+                }
+            }
+        }
+    }
+
+    // If the procedural level builder is not valid, or if the level has been fully spawned, return true (1)
+    return true;
+}
+
+
+
+
+bool ADBDGameState::IsLevelSetupDone() const
+{
+    // Retrieve the World from the current GameState via VTable (Offset 0x108 maps to GetWorld)
+    UWorld* World = this->GetWorld();
+
+    // Access the owning Game Instance (Offset +0x120 in UWorld corresponds to OwningGameInstance)
+    UDBDGameInstance* GameInstance = Cast<UDBDGameInstance>(World->GetGameInstance());
+
+    // Validate that the GameInstance exists
+    if (GameInstance != nullptr)
+    {
+        // Check if the instance correctly belongs to the UDBDGameInstance class tree
+        // The disassembly compares ClassTreeIndex and ClassTreeNumChildren, which is an optimized IsA check
+        if (GameInstance->IsA(UDBDGameInstance::StaticClass()) == true)
+        {
+            // Internal validity check: verifies if the object is pending kill via GUObjectArray flags (bit 29)
+            if (GameInstance->IsPendingKill() == false)
+            {
+                // Fetch the local player state from the Game Instance
+                /* UNDEFINED ELEMENT */
+                ADBDPlayerState* LocalPlayerState = GameInstance->GetLocalPlayerState();
+
+                // Validate that the local player state exists
+                if (LocalPlayerState != nullptr)
+                {
+                    // Internal validity check: verifies if the player state object is pending kill via GUObjectArray
+                    if (LocalPlayerState->IsPendingKill() == false)
+                    {
+                        // Check if the actor is currently being destroyed (bit 2 in __bitfield140 at offset 0x140)
+                        if (LocalPlayerState->bActorIsBeingDestroyed == false)
+                        {
+                            // Verify the player's role in the game (Offset 0x750, 3 represents VE_Observer)
+                            if (LocalPlayerState->GameRole == VE_Observer)
+                            {
+                                // If the player is strictly an observer, return the ready-to-play state
+                                return this->_levelReadyToPlay;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // If any structural checks fail or the player is not an observer, fall back to returning the loaded state
+    return this->_gameLevelLoaded;
+}
+
+
+
+
+bool ADBDGameState::IsObsessionTargetAlive()
+{
+    // Return the cached state immediately if the obsession target pointer is null
+    if (this->_obsessionTarget == nullptr)
+    {
+        return this->_cachedObsessionEscaped;
+    }
+
+    // GUObjectArray bitfield checks: Verify that the object is not pending kill (garbage collection flag check)
+    // The disassembly unpacks IsValid/IsPendingKill operations natively used by Unreal Engine 4
+    if (this->_obsessionTarget->IsPendingKill() == false)
+    {
+        // Check if the actor is in the process of being destroyed via AActor::__bitfield140
+        if (this->_obsessionTarget->bActorIsBeingDestroyed == false)
+        {
+            // The disassembly performs a redundant check for the PendingKill flag here, 
+            // likely due to UE4's inlined macros during the compilation process.
+            if (this->_obsessionTarget->IsPendingKill() == false)
+            {
+                /* UNDEFINED VTABLE */
+                // Calls an unknown virtual function on ACamperPlayer at VTable offset 0x1070 (Index 526).
+                // Expected to return a boolean evaluating some state of the camper.
+                if (this->_obsessionTarget->IsValidImpl() == true)
+                {
+                    /* UNDEFINED ELEMENT */
+                    // Check if the obsession target has already escaped
+                    bool isEscaped = this->_obsessionTarget->IsEscaped();
+
+                    // Cache the escaped state back into the GameState
+                    this->_cachedObsessionEscaped = isEscaped;
+
+                    /* UNDEFINED ELEMENT */
+                    // Check if the obsession target is dead
+                    uint8_t isDead = this->_obsessionTarget->IsDead();
+
+                    // If the target is not dead, they are considered alive (returning 1)
+                    if (isDead == false)
+                    {
+                        return true;
+                    }
+                    else
+                    {
+                        return false;
+                    }
+                }
+            }
+        }
+    }
+
+    // Return the cached state if the target is no longer valid, is being destroyed, 
+    // or if the virtual function state check failed.
+    return this->_cachedObsessionEscaped;
+}
+
+
+
+
+bool ADBDGameState::IsObsessionTargetAliveInLevel()
+{
+    // Verify that the obsession target pointer is valid
+    if (this->_obsessionTarget != nullptr)
+    {
+        // The GUObjectArray bitwise checks in the disassembly correspond to Unreal Engine's IsPendingKill().
+        // We check if the object is pending kill and if the actor is currently being destroyed (bActorIsBeingDestroyed).
+        if (this->_obsessionTarget->IsPendingKill() == false && this->_obsessionTarget->bActorIsBeingDestroyed == false)
+        {
+            // Due to compiler optimizations and inline expansions, the PendingKill state is evaluated again.
+            if (this->_obsessionTarget->IsPendingKill() == false)
+            {
+                // Call the undefined virtual function and verify the result
+                if (this->_obsessionTarget->IsValidImpl() != false)
+                {
+                    // Check if the obsession target is dead
+                    /* UNDEFINED ELEMENT */
+                    if (this->_obsessionTarget->IsDead() == false)
+                    {
+                        // Check if the obsession target has already escaped or is in paradise
+                        /* UNDEFINED ELEMENT */
+                        if (this->_obsessionTarget->IsInParadise() == false)
+                        {
+                            return true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Return 0 if the target is invalid, dead, being destroyed, or in paradise
+    return false;
+}
+
+
+
+
+bool ADBDGameState::IsOfferingReceived() const
+{
+    return this->_levelOfferings.OfferingReady;
+}
+
+
+
+
+bool ADBDGameState::IsOnePlayerLeft()
+{
+    return (this->_survivorLeft == 1);
+}
+
+
+
+
+void ADBDGameState::KillerServerFound(const FServerJoiningData* joinParams)
+{
+    // Update the transition step for the survivor group
+    this->_currentSurvivorGroupTransitionStep = ESurvivorGroupTransitionSteps::JoiningKiller;
+
+    // Retrieve UWorld via VTable offset 0x108 (UObject::GetWorld)
+    /* UNDEFINED VTABLE */
+    UWorld* world = this->GetWorld();
+    if (world == nullptr)
+    {
+        return;
+    }
+
+    // In UE 4.13, offset 0x120 from UWorld points to the OwningGameInstance
+    UDBDGameInstance* gameInstance = Cast<UDBDGameInstance>(world->GetGameInstance());
+    if (gameInstance == nullptr)
+    {
+        return;
+    }
+
+    // The disassembled index check against GUObjectArray and bitwise shift (>> 0x1D & 1)
+    // is Unreal Engine's internal validation for EInternalObjectFlags::PendingKill.
+    if (gameInstance->IsPendingKill() == true)
+    {
+        return;
+    }
+
+    UGameFlowContextSystem* contextSystem = gameInstance->_contextSystem;
+    if (contextSystem == nullptr)
+    {
+        return;
+    }
+
+    if (contextSystem->IsPendingKill() == true)
+    {
+        return;
+    }
+
+    UOnlineSystemHandler* onlineSystemHandler = contextSystem->m_OnlineSystemHandler;
+    if (onlineSystemHandler == nullptr)
+    {
+        return;
+    }
+
+    if (onlineSystemHandler->IsPendingKill() == true)
+    {
+        return;
+    }
+
+    ADBDPlayerState* playerState = UDBDGameInstance::GetPrimaryPlayerState(gameInstance);
+    if (playerState == nullptr)
+    {
+        return;
+    }
+
+    if (playerState->IsPendingKill() == true)
+    {
+        return;
+    }
+
+    // Checking __bitfield140 bit 2 (0x04) maps to bActorIsBeingDestroyed
+    if (playerState->bActorIsBeingDestroyed == true)
+    {
+        return;
+    }
+
+    // Register networking delegates
+    /* UNDEFINED ELEMENT */
+    this->AddOnJoinSessionCompleteDelegate();
+
+    /* UNDEFINED ELEMENT */
+    this->AddOnLobbySessionFoundDelegate();
+
+    /* UNDEFINED ELEMENT */
+    this->AddOnJoinSessionLogDelegate();
+
+    /* UNDEFINED ELEMENT */
+    this->AddOnJoinSessionErrorDelegate();
+
+    // Load the OnlinePresence plugin module
+    IOnlinePresencePlugin* onlinePresencePlugin = FModuleManager::LoadModuleChecked<IOnlinePresencePlugin>(FName("OnlinePresence"));
+    if (onlinePresencePlugin == nullptr)
+    {
+        return;
+    }
+
+    // Checking if module is available via VTable offset 0xA0
+    /* UNDEFINED VTABLE */
+    bool isPresenceAvailable = onlinePresencePlugin->IsAvailable();
+    if (isPresenceAvailable == false)
+    {
+        return;
+    }
+
+    // Construct a new session search result wrapped in a Shared Pointer.
+    // The 0x18 allocation in disassembly corresponds to the Reference Controller block for TSharedPtr.
+    TSharedPtr<FOnlineSessionSearchResult> searchResult = MakeShareable(new FOnlineSessionSearchResult());
+    if (searchResult.IsValid() == false)
+    {
+        return;
+    }
+
+    // Fill session data
+    /* UNDEFINED ELEMENT */
+    FServerJoiningData::FillSessionFromJoinParams(joinParams, searchResult.Get());
+
+    // Request Matchmaking Subsystem
+    /* UNDEFINED ELEMENT */
+    TSharedRef<IMatchmakingPresenceSubsystem> matchmakingSubsystem = onlinePresencePlugin->Matchmaking();
+
+    // Attempt to join session using VTable offset 0x1A8
+    /* UNDEFINED VTABLE */
+    bool bMatchmakingStarted = matchmakingSubsystem->JoinSession(playerState->UniqueId.UniqueNetId.Object, NAME_GameSession, searchResult);
+
+    if (bMatchmakingStarted == false)
+    {
+        // Setup analytics attributes for failure
+        // TArray resize and FString allocations seen in disassembly are abstracted here
+        TArray<FAttribute> failureAttributes;
+        FString eventName = FString(TEXT("SWF_JoinServer_Failed_szni"));
+
+        /* UNDEFINED ELEMENT */
+        UBHVRAnalytics::AddAttributes(failureAttributes, eventName, TEXT("Failed_AlreadyInSearch"));
+
+        FString analyticsCategory = FString(TEXT("SurviveWithFriend"));
+
+        /* UNDEFINED ELEMENT */
+        UBHVRAnalytics::RecordEvent(analyticsCategory, failureAttributes);
+
+        // Note: The manual FMemory::Free calls seen in the disassembly (at 0x140267108, 0x140267129, etc.)
+        // are compiler-generated cleanups (destructors) for the FString and TArray scoped variables.
+        // In high-level C++, these are handled automatically when the variables go out of scope.
+    }
+
+    // TSharedPtr reference counts are decremented automatically upon exiting the function scope.
+}
+
+
+
+
+void ADBDGameState::Multicast_JoinKillerServerFailed_Implementation()
+{
+    // Accessing UWorld via the VTable (Offset 0x108 maps to GetWorld)
+    UWorld* World = this->GetWorld();
+    if (World == nullptr)
+    {
+        return;
+    }
+
+    // Retrieving the OwningGameInstance from UWorld (Offset 0x120)
+    UGameInstance* GameInstance = World->GetGameInstance();
+    if (GameInstance == nullptr)
+    {
+        return;
+    }
+
+    // Verifying that the GameInstance inherits from UDBDGameInstance
+    if (GameInstance->IsA(UDBDGameInstance::StaticClass()) == false)
+    {
+        return;
+    }
+
+    // Checking if the GameInstance object is valid in the GUObjectArray (not pending kill)
+    if (IsValid(GameInstance) == false)
+    {
+        return;
+    }
+
+    // Initializing Analytics Event Attributes array
+    TArray<FAnalyticsEventAttribute> AnalyticsAttributes; /* UNDEFINED ELEMENT */
+
+    // Finding the target join parameter setting using a lambda predicate
+    FDBDJoinParamSetting* JoinParamSetting = this->_serverJoiningData.Settings.FindByPredicate([](const FDBDJoinParamSetting& Setting)
+        {
+            // Predicate logic is encapsulated inside the lambda in disassembly
+            return true;
+        });
+
+    // Copying the string value if the setting was successfully found
+    FString ParamValue = TEXT("");
+    if (JoinParamSetting != nullptr)
+    {
+        ParamValue = JoinParamSetting->Value;
+    }
+
+    // Adding the extracted attribute to the analytics array
+    AnalyticsAttributes.Add(FAnalyticsEventAttribute(TEXT("SWF_KillerServerJoinedFailed_Id_szni"), ParamValue)); /* UNDEFINED ELEMENT */
+
+    // Recording the analytics event for Survive With Friends
+    UBHVRAnalytics::RecordEvent(TEXT("SurviveWithFriend"), AnalyticsAttributes); /* UNDEFINED ELEMENT */
+
+    // Displaying a debug message on the screen
+    if (GEngine != nullptr)
+    {
+        FString DebugMessage = FString::Printf(TEXT("Multicast_JoinKillerServerFailed_Implementation"));
+        GEngine->AddOnScreenDebugMessage(-1, 5.0f, FColor::Blue, DebugMessage, true, FVector2D::UnitVector);
+    }
+
+    // Fetching UOnlineSystemHandler from UDBDGameInstance (Offset 0x3B0)
+    UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(GameInstance);
+    if (DBDGameInstance != nullptr)
+    {
+        UOnlineSystemHandler* OnlineHandler = DBDGameInstance->OnlineSystemHandler; /* UNDEFINED ELEMENT */
+        if (OnlineHandler != nullptr)
+        {
+            // Ensuring the OnlineHandler object is valid before interaction
+            if (IsValid(OnlineHandler) == true)
+            {
+                // Destroying the current active session
+                FName SessionName = FName(TEXT("GameSession"));
+                UOnlineSystemHandler::DestroyExistingSession(OnlineHandler, SessionName, 0); /* UNDEFINED ELEMENT */
+            }
+        }
+
+        // Fetching UDBDPersistentData from UDBDGameInstance (Offset 0x3B8)
+        UDBDPersistentData* PersistentData = DBDGameInstance->_persistentData; /* UNDEFINED ELEMENT */
+        if (PersistentData != nullptr)
+        {
+            // Transitioning the game type state back to SurvivorGroup
+            PersistentData->SetGameType(EGameType::SurvivorGroup); /* UNDEFINED ELEMENT */
+        }
+    }
+}
+
+
+
+
+void ADBDGameState::Multicast_KillerSearchStarted_Implementation()
+{
+    this->_killerServerSearchStarted = true;
+}
+
+
+
+
+void ADBDGameState::Multicast_KillerServerSearchFailed_Implementation()
+{
+    this->_killerServerSearchFailed = true;
+}
+
+
+
+
+void ADBDGameState::Multicast_SetBuiltLevelData_Implementation(const FName* themeName, const FName* themeWeather, const FString* mapName, int32_t tileCount, const TArray<FDependency, FDefaultAllocator>* levelDependencies)
+{
+    // Assign the theme name to the built level data structure
+    this->_builtLevelData.ThemeName = *themeName;
+
+    // Assign the theme weather to the built level data structure
+    this->_builtLevelData.ThemeWeather = *themeWeather;
+
+    // Assign the map name to the built level data structure
+    // TArray<uint16_t>::operator= is invoked under the hood for FString::Data
+    this->_builtLevelData.MapName = *mapName;
+
+    // Set the total amount of tiles for the level
+    this->_builtLevelData.TileCount = tileCount;
+
+    // Assign the array of level dependencies to the built level data structure
+    // The compiler uses a tail call optimization (jmp) here, but it is a standard assignment
+    this->_builtLevelData.Dependencies = *levelDependencies;
+}
+
+
+
+
+void ADBDGameState::Multicast_SetGameEnded_Implementation(bool hasServerLeftGame)
+{
+    // Update the server state indicating if the server has left the game
+    this->SetServerLeftGame(hasServerLeftGame); /* UNDEFINED ELEMENT */
+
+    // Retrieve the Game Instance associated with this GameState
+    UGameInstance* GameInstance = this->GetGameInstance();
+
+    // Ensure the Game Instance is valid
+    if (GameInstance == nullptr)
+    {
+        return;
+    }
+
+    // Verify if the Game Instance is of type UDBDGameInstance.
+    // The decompiled code shows an inline UObject::IsA() check using ClassTreeIndex math.
+    UClass* DBDGameInstanceClass = UDBDGameInstance::StaticClass();
+    if (GameInstance->IsA(DBDGameInstanceClass) == false)
+    {
+        return;
+    }
+
+    // Inline bitwise check against GUObjectArray to see if the object is pending destruction.
+    // (EInternalObjectFlags::PendingKill evaluates to 1 << 29, which matches the >> 0x1d & 1 shift in ASM)
+    if (GameInstance->IsPendingKill() == true)
+    {
+        return;
+    }
+
+    // Safely cast to UDBDGameInstance since the IsA check successfully passed
+    UDBDGameInstance* DBDGameInstance = static_cast<UDBDGameInstance*>(GameInstance);
+
+    // Retrieve the local player controller
+    ADBDPlayerControllerBase* LocalPlayerController = DBDGameInstance->GetLocalDBDPlayerController(); /* UNDEFINED ELEMENT */
+
+    // Ensure the Player Controller is valid
+    if (LocalPlayerController == nullptr)
+    {
+        return;
+    }
+
+    // Check if the Player Controller is marked as PendingKill or is in the process of being destroyed.
+    // The bitwise check (__bitfield140 & 4) exactly corresponds to bActorIsBeingDestroyed in the AActor structure.
+    if (LocalPlayerController->IsPendingKill() == true || LocalPlayerController->bActorIsBeingDestroyed == true)
+    {
+        return;
+    }
+
+    // Perform a final safety check to ensure the Player Controller is still valid before firing the client event
+    if (LocalPlayerController->IsPendingKill() == false)
+    {
+        // Notify the client that the game has ended
+        LocalPlayerController->Client_GameEnded(); /* UNDEFINED ELEMENT */
+    }
+}
+
+
+
+
+void ADBDGameState::Multicast_SetGameLevelLoaded_Implementation()
+{
+    if (this->_gameLevelLoaded)
+        return;
+    
+    this->_gameLevelLoaded = true;
+
+    this->SetupGameLoaded();
+}
+
+
+
+
+void ADBDGameState::Multicast_SetKillerGoalPoints_Implementation(FUniqueNetIdRepl playerId, int32_t killerGoals)
+{
+    if (GetLocalRole() == ROLE_Authority) return;
+
+    UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(GetGameInstance());
+    if (!DBDGameInstance) return;
+
+    UDBDPersistentData* PersistentData = DBDGameInstance->_persistentData;
+    if (PersistentData)
+    {
+        FCachedPlayerScoreData* ScoreCache = PersistentData->GetPlayerScoreCache(playerId);
+
+        if (ScoreCache)
+        {
+            ScoreCache->KillerGoalPoints = killerGoals;
+        }
+    }
+}
+
+
+
+
+void ADBDGameState::Multicast_SetServerLeftGame_Implementation(bool hasServerLeft)
+{
+    this->SetServerLeftGame(hasServerLeft);
+}
+
+
+
+
+void ADBDGameState::Multicast_UpdateCharacterFromGamePreset_Implementation(ADBDPlayerState_Menu* playerState_Menu, FGamePresetData* gamePresetData)
+{
+    // Retrieve the base GameInstance associated with this Actor
+    UGameInstance* GameInstance = this->GetGameInstance();
+
+    // Try to safely cast the GameInstance to UDBDGameInstance.
+    // The disassembly explicitly shows Unreal Engine's internal ClassTreeIndex casting logic,
+    // which developers call using the Cast<> template.
+    UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(GameInstance);
+
+    // Extract the UDBDPersistentData pointer from UDBDGameInstance at the specific memory offset (0x3B8).
+    // Pointer arithmetic is used here to bypass the missing UDBDGameInstance class structure.
+    // Note: The original disassembly does not perform a "== nullptr" check on DBDGameInstance before dereferencing.
+    UDBDPersistentData*  = DBDGameInstance->_persistentData; /* UNDEFINED ELEMENT */
+
+    // Apply the game preset data to the retrieved persistent data instance.
+    // It is represented here matching the Pseudo C call structure.
+    PersistentData->ApplyGamePresetData(gamePresetData); /* UNDEFINED ELEMENT */
+
+    // Update the characters using the provided game preset data within the current GameState
+    this->UpdateCharactersFromGamePreset(gamePresetData);
+
+    // Note: The parameter 'playerState_Menu' is completely unused in this function's scope.
+    // The disassembly also shows a tailcall to the FGamePresetData destructor (FGamePresetData::~FGamePresetData), 
+    // which implies standard C++ scope destruction being handled natively at the end of the execution block.
+}
+
+
+
+
+void ADBDGameState::OnBeforeLevelStarts()
+{
+    UDBDGameInstance* DBDGameInstance = Cast<UDBDGameInstance>(GetGameInstance());
+
+    if (IsValid(DBDGameInstance))
+    {
+        ADBDPlayerController* DBDPlayerController = Cast<ADBDPlayerController>(DBDGameInstance->GetFirstLocalPlayerController());
+
+        if (IsValid(DBDPlayerController))
+        {
+            ADBDPlayerState* DBDPlayerState = Cast<ADBDPlayerState>(DBDPlayerController->PlayerState);
+
+            if (IsValid(DBDPlayerState))
+            {
+            }
+        }
+    }
+
+    if (FSlateApplication::IsInitialized())
+    {
+        FSlateApplication& SlateApp = FSlateApplication::Get();
+
+        SlateApp.ClearAllUserFocus(EFocusCause::SetDirectly);
+        SlateApp.SetUserFocusToGameViewport(0, EFocusCause::SetDirectly);
+    }
+}
+
+
+
+
+void ADBDGameState::OnFindFriendSessionComplete(int32_t LocalUserNum, uint8_t bWasSuccessful, const FOnlineSessionSearchResult* SearchResult)
+{
+    // Clear the delegate to prevent redundant calls and memory leaks.
+    this->ClearOnFindFriendSessionCompleteDelegate();
+
+    // Create an array to hold analytics event attributes.
+    TArray<FAnalyticsEventAttribute> AnalyticsAttributes;
+
+    // Verify that the operation was successful and that the OwningUserId (typically a TSharedPtr) is valid.
+    if (bWasSuccessful != false && SearchResult->Session.OwningUserId.Get() != nullptr)
+    {
+        FOnlineSessionInfo* SessionInfo = SearchResult->Session.SessionInfo.Get();
+
+        // Check if the SessionInfo pointer is valid, then validate the session itself using its virtual table.
+        // We use offset 0x20 (index 4) which is highly likely to be the IsValid() method on FOnlineSessionInfo in UE4.13.
+        if (SessionInfo != nullptr && SessionInfo->IsValid() != false)
+        {
+            const TCHAR* OwningUserNameStr;
+
+            // Retrieve the owning user name or fallback to an empty string if the array is empty.
+            if (SearchResult->Session.OwningUserName.Len() == 0)
+            {
+                OwningUserNameStr = TEXT("");
+            }
+            else
+            {
+                OwningUserNameStr = *SearchResult->Session.OwningUserName;
+            }
+
+            // Format a descriptive log string with lobby session details.
+            FString JoinLobbyLog = FString::Printf(
+                TEXT("JoiningLobbySession %s PCon : %d JInProg : %d JVPres : %d Advert : %d"),
+                OwningUserNameStr,
+                SearchResult->Session.NumOpenPublicConnections,
+                SearchResult->Session.SessionSettings.bAllowJoinInProgress,
+                SearchResult->Session.SessionSettings.bAllowJoinViaPresence,
+                SearchResult->Session.SessionSettings.bShouldAdvertise
+            );
+
+            FString EventFailCheck = TEXT("SWF_JoinServerFail_Check_szni");
+
+            // Populate the analytics attributes array with the generated strings.
+            /* UNDEFINED ELEMENT */ AddAttributes(AnalyticsAttributes, EventFailCheck, JoinLobbyLog);
+
+            // Log the formatted string using standard Unreal Engine macro (which expands to FMsg::Logf_Internal).
+            UE_LOG(GameFlow, Log, TEXT("SWF_JoinServerFail_Check_szni %s"), *JoinLobbyLog);
+        }
+    }
+
+    FString EventName = TEXT("SurviveWithFriend");
+
+    // Send the recorded attributes to the analytics system.
+    /* UNDEFINED ELEMENT */ UBHVRAnalytics::RecordEvent(EventName, AnalyticsAttributes);
+
+    // Retrieve the UWorld object. Offset 0x108 maps exactly to GetWorld() inside the provided VTable.
+    UWorld* World = this->GetWorld();
+
+    if (World != nullptr)
+    {
+        // Extract the OwningGameInstance from the valid World object.
+        UDBDGameInstance* GameInstance = Cast<UDBDGameInstance>(World->GetGameInstance());
+
+        // Validate that the instance exists, matches our custom class hierarchy, and passes the internal GUObjectArray memory checks.
+        if (GameInstance != nullptr && GameInstance->IsA(UDBDGameInstance::StaticClass()) != false && IsValid(GameInstance) != false)
+        {
+            // Retrieve the local player's state.
+            ADBDPlayerState* LocalPlayerState = GameInstance->GetLocalPlayerState();
+
+            if (LocalPlayerState != nullptr)
+            {
+                // Notify the server that the killer has joined. 0 usually stands for 'false' or a default enum state.
+                LocalPlayerState->Server_KillerServerJoined(false);
+            }
+        }
+    }
+}
+
+
+
+
+void ADBDGameState::OnJoinSessionComplete(class FName sessionName, enum EOnJoinSessionCompleteResult::Type result)
+{
+    // Retrieve the Game Instance via the World
+    /* UNDEFINED VTABLE */
+    // Resolving vtable + 0x108 (GetWorld) -> offset 0x120 (GameInstance)
+    UDBDGameInstance* GameInstance = Cast<UDBDGameInstance>(this->GetWorld()->GetGameInstance());
+
+    // Ensure the GameInstance is valid and matches the target class
+    if (GameInstance != nullptr)
+    {
+        // Clear locally assigned delegates to prevent dangling callbacks
+        /* UNDEFINED ELEMENT */
+        this->ClearOnLobbySessionFoundDelegate();
+
+        /* UNDEFINED ELEMENT */
+        this->ClearOnJoinSessionCompleteDelegate();
+
+        /* UNDEFINED ELEMENT */
+        this->ClearOnJoinSessionErrorDelegate();
+
+        /* UNDEFINED ELEMENT */
+        this->ClearOnJoinSessionLogDelegate();
+
+        // Check if the Context System is initialized
+        UGameFlowContextSystem* ContextSystem = GameInstance->_contextSystem;
+        if (ContextSystem != nullptr)
+        {
+            // Access the Online System Handler via the Context System
+            UOnlineSystemHandler* OnlineSystemHandler = ContextSystem->m_OnlineSystemHandler;
+            if (OnlineSystemHandler != nullptr)
+            {
+                // Remove the join session complete delegate instance explicitly 
+                /* UNDEFINED ELEMENT */
+                OnlineSystemHandler->OnJoinSessionsCompleteDelegate.Remove(this->_onJoinSessionsCompleteDelegateHandle);
+            }
+        }
+
+        // Check if the join session attempt was successful (0 usually means Success in UE's EOnJoinSessionCompleteResult)
+        if (result == EOnJoinSessionCompleteResult::Success)
+        {
+            // Load the Online Presence advertising module
+            /* UNDEFINED ELEMENT */
+            IOnlinePresencePlugin* OnlinePresenceModule = FModuleManager::LoadModuleChecked<IOnlinePresencePlugin>(FName("OnlinePresence"));
+            if (OnlinePresenceModule->IsConnected())
+            {
+                // Fetch the Matchmaking Presence Subsystem
+                /* UNDEFINED ELEMENT */
+                TSharedRef<IMatchmakingPresenceSubsystem> MatchmakingSubsystem = OnlinePresenceModule->GetMatchmaking();
+
+                // Get the session using the subsystem
+                /* UNDEFINED VTABLE */
+                FOnlineSession SearchResult = MatchmakingSubsystem->GetNamedSession(/* data_143621a20 */);
+
+                // Assign join parameters and complete the session transition
+                UOnlineSystemHandler* GameInstanceOnlineHandler = GameInstance->GetOnlineSystemHandler();
+                if (GameInstanceOnlineHandler != nullptr)
+                {
+                    /* UNDEFINED ELEMENT */
+                    GameInstanceOnlineHandler->SetJoinParamsFromSession(SearchResult);
+
+                    /* UNDEFINED ELEMENT */
+                    GameInstanceOnlineHandler->OnJoinSessionComplete(sessionName, EOnJoinSessionCompleteResult::Success);
+                }
+            }
+        }
+        else
+        {
+            // The join session attempt failed
+            /* UNDEFINED ELEMENT */
+            IOnlinePresencePlugin* OnlinePresenceModule = FModuleManager::LoadModuleChecked<IOnlinePresencePlugin>(FName("OnlinePresence"));
+            if (OnlinePresenceModule->IsConnected())
+            {
+                /* UNDEFINED ELEMENT */
+                TSharedRef<IMatchmakingPresenceSubsystem> MatchmakingSubsystem = OnlinePresenceModule->GetMatchmaking();
+
+                // Prepare analytics payload attributes for Survive With Friends (SWF) failure
+                FString BaseErrorStr = FString(TEXT("SWF_KillerServerJoinedFailed_i"));
+                FString ErrorIdStr = FString(TEXT("SWF_KillerServerJoinedFailed_Id_szni"));
+                FString SessionExistsStr = FString(TEXT("Failed_SessionAlreadyExists"));
+                FString EventNameStr = FString(TEXT("SurviveWithFriend"));
+
+                // Record the analytics event with the local settings payload
+                /* UNDEFINED ELEMENT */
+                UBHVRAnalytics::RecordEvent(EventNameStr, BaseErrorStr, this->_serverJoiningData.Settings);
+
+                // Add delegate to attempt finding a friend's session instead
+                /* UNDEFINED ELEMENT */
+                this->AddOnFindFriendSessionCompleteDelegate();
+
+                // Check if a session already exists for this specific ID
+                /* UNDEFINED VTABLE */
+                bool bSessionExists = MatchmakingSubsystem->HasSession(0, this->_serverJoiningData.SessionId);
+
+                // If it does not exist, trigger the friend session complete flow with an empty search result
+                if (bSessionExists == false)
+                {
+                    FOnlineSession EmptySearchResult;
+
+                    /* UNDEFINED ELEMENT */
+                    this->OnFindFriendSessionComplete(0, false, EmptySearchResult);
+                }
+            }
+        }
+    }
+}
+
+
+
+
+void ADBDGameState::OnJoinSessionError(FString* joinError)
+{
+    // Ensure the joinError pointer is valid before proceeding
+    if (joinError == nullptr)
+    {
+        return;
+    }
+
+    // Initialize an array to hold analytics event attributes
+    TArray<FAnalyticsEventAttribute> AnalyticsAttributes;
+
+    // Create a string for the attribute name
+    FString AttributeName = FString(TEXT("SWF_JoinServer_Failed_szni"));
+
+    // Add the join error as an attribute
+    /* UNDEFINED ELEMENT */
+    UBHVRAnalytics::AddAttributes(AnalyticsAttributes, AttributeName, *joinError);
+
+    // Create a string for the event name
+    FString EventName = FString(TEXT("SurviveWithFriend"));
+
+    // Record the analytics event with the collected attributes
+    /* UNDEFINED ELEMENT */
+    UBHVRAnalytics::RecordEvent(EventName, AnalyticsAttributes);
+
+    // Extract the raw string data for logging
+    // The disassembly explicitly checks the ArrayNum to avoid null access on string data
+    const TCHAR* LogData = TEXT("");
+    if (joinError->Len() == 0)
+    {
+        LogData = TEXT("");
+    }
+    else
+    {
+        LogData = **joinError;
+    }
+
+    // Log the error message
+    // The assembly checks if verbosity is >= 5, which corresponds to ELogVerbosity::Log in UE4.
+    // FMsg::Logf_Internal__VA is the underlying macro expansion of UE_LOG.
+    UE_LOG(LogGameFlow, Log, TEXT("SWF_JoinServer_Failed %s"), LogData);
+
+    // Note: The manual memory free operations (FMemory::Free) seen in the disassembly 
+    // are automatically handled here by the destructors of TArray and FString 
+    // when they fall out of scope at the end of the function.
+}
+
+
+
+
+void ADBDGameState::OnLobbySessionFound(uint8_t bWasSuccessful)
+{
+    // Initialize the attribute array to hold analytics data.
+    // Represented as raw pointers 'attr' and 'i_2' in the disassembly.
+    /* UNDEFINED ELEMENT */
+    TArray<FAnalyticsEventAttribute> AnalyticsAttributes;
+
+    // Convert the string to a wide character format for Unreal Engine's FString.
+    // In disassembly, this uses FGenericPlatformString::Convert to allocate memory dynamically.
+    FString JoinServerAttribute = TEXT("SWF_JoinServer_LobbySessionFound_ini");
+
+    // Add the initialized attribute to the array.
+    /* UNDEFINED ELEMENT */
+    UBHVRAnalytics::AddAttributes(AnalyticsAttributes, JoinServerAttribute, bWasSuccessful);
+
+    // Prepare the main event name for the analytics record.
+    FString EventName = TEXT("SurviveWithFriend");
+
+    // Fire the analytics event, passing the array of attributes.
+    /* UNDEFINED ELEMENT */
+    UBHVRAnalytics::RecordEvent(EventName, AnalyticsAttributes);
+
+    // Check if the current log verbosity allows logging (0x5 translates to ELogVerbosity::Log).
+    // Accessing the global 'GameFlow' log category structure.
+    if (GameFlow.Verbosity >= ELogVerbosity::Log)
+    {
+        // Internal engine call to FMsg::Logf_Internal__VA, which is the macro expansion for UE_LOG.
+        // It logs the file path, line number (0x200 / 512), log category, verbosity, and the string format.
+        UE_LOG(LogGameFlow, Log, TEXT("LobbySessionFound %d"), SuccessfulInt);
+    }
+}
