@@ -2811,3 +2811,392 @@ void ADBDGameState::OnLobbySessionFound(uint8_t bWasSuccessful)
         UE_LOG(LogGameFlow, Log, TEXT("LobbySessionFound %d"), SuccessfulInt);
     }
 }
+
+
+
+
+void ADBDGameState::OnLobbySessionLog(FString* joinLog)
+{
+    // Ensure the pointer is valid before attempting to read its data.
+    // Explicitly using "== nullptr" as requested, avoiding "!" operators.
+    if (joinLog == nullptr)
+    {
+        return;
+    }
+
+    // Initialize an array to hold the analytics event attributes.
+    // The disassembly shows memset and ArrayNum/ArrayMax zeroing, which is handled automatically by the TArray constructor.
+    TArray<FAnalyticsEventAttribute> AnalyticsAttributes;
+
+    // Convert the ANSI string "SWF_JoinServer_Log_szni" to a wide character string (TEXT / FString).
+    // The pseudo code points to a template function used by the developers to add attributes.
+    /* UNDEFINED ELEMENT */
+    AddAttributes(AnalyticsAttributes, FString(TEXT("SWF_JoinServer_Log_szni")), *joinLog);
+
+    // Convert the ANSI string "SurviveWithFriend" to a wide character string and record the analytics event.
+    // Passes the newly created array of attributes alongside the event name.
+    /* UNDEFINED ELEMENT */
+    UBHVRAnalytics::RecordEvent(FString(TEXT("SurviveWithFriend")), AnalyticsAttributes);
+
+    // The disassembly checks GameFlow.Verbosity >= 5 (ELogVerbosity::Log) and then calls FMsg::Logf_Internal__VA.
+    // This is the standard compiled expansion of the UE_LOG macro.
+    UE_LOG(LogGameFlow, Log, TEXT("JoinServer_Log %s"), **joinLog);
+
+    // Note: The pseudo C/disassembly shows FMemory::Free being called on the string data and the TArray allocator data at the end.
+    // In standard C++, this memory cleanup is handled automatically by the destructors of ~TArray() and ~FString() when they go out of scope.
+}
+
+
+
+
+void ADBDGameState::OnRep_ActivatedGeneratorCount(int32_t oldValue)
+{
+    // Ensure that the replicated value is actually different from the previous value.
+    // If they are equal, there is no need to trigger the delegates.
+    if (oldValue == this->_activatedGeneratorCount)
+    {
+        return;
+    }
+
+    // Broadcast the native C++ multicast delegate, passing the newly updated generator count.
+    // Listeners bound in C++ will react to this event.
+    this->OnActivatedGeneratorCountChanged.Broadcast(this->_activatedGeneratorCount);
+
+    // Broadcast the dynamic multicast script delegate, passing the newly updated generator count.
+    // Listeners bound in Unreal Engine Blueprints will react to this event.
+    // Note: The disassembly shows ProcessMulticastDelegate taking a pointer, which is standard
+    // for UE4's internal dynamic delegate handling, but in C++ we simply call Broadcast().
+    this->OnActivatedGeneratorCountChangedDynamic.Broadcast(this->_activatedGeneratorCount);
+}
+
+
+
+
+void ADBDGameState::OnRep_EscapeDoorActivated(uint8_t oldValue)
+{
+    // Check if the door was not previously activated (oldValue == 0) 
+    // and that the newly replicated value is different from the old value.
+    // Explicit equality checks are used here instead of the logical NOT (!) operator.
+    if (oldValue == false && this->_escapeDoorActivated != oldValue)
+    {
+        // Broadcast the dynamic multicast delegate.
+        // Listeners bound in Unreal Engine Blueprints will react to this event.
+        // The disassembly shows TMulticastScriptDelegate::ProcessMulticastDelegate with a nullptr argument,
+        // which resolves to a standard parameterless Broadcast() call in C++.
+        this->OnEscapeDoorActivated.Broadcast();
+
+        // Broadcast the native C++ base multicast delegate.
+        // Listeners bound in C++ (specifically for the HUD in this context) will react to this event.
+        this->OnEscapeDoorActivatedHud.Broadcast();
+    }
+}
+
+
+
+
+void ADBDGameState::OnRep_GamePresetData()
+{
+    // Retrieve the UWorld pointer via the VTable (Offset 0x108 matches GetWorld in the provided VTable).
+    UWorld* World = this->GetWorld();
+
+    if (World == nullptr)
+    {
+        return;
+    }
+
+    // Retrieve the OwningGameInstance from the UWorld (offset 0x120 in UE4.13).
+    UGameInstance* BaseGameInstance = World->GetGameInstance();
+
+    // The disassembly performs a class tree index check to verify if the instance is a UDBDGameInstance.
+    // This is exactly what Unreal Engine's Cast<>() does under the hood.
+    UDBDGameInstance* GameInstance = Cast<UDBDGameInstance>(BaseGameInstance);
+
+    // The disassembly explicitly checks GUObjectArray to verify the object isn't pending kill.
+    // This maps exactly to the standard Unreal Engine IsValid() check.
+    if (IsValid(GameInstance) == false)
+    {
+        return;
+    }
+
+    // Retrieve the persistent data object from the UDBDGameInstance (offset 0x3B8 in the disassembly).
+    // The exact property name is not provided in the structure, so we assume a standard naming convention.
+    /* UNDEFINED ELEMENT */
+    UDBDPersistentData* PersistentData = GameInstance->PersistentData;
+
+    // Apply the newly replicated preset data array/struct to the persistent data manager.
+    /* UNDEFINED ELEMENT */
+    UDBDPersistentData::ApplyGamePresetData(PersistentData, &this->_gamePresetData);
+
+    // Broadcast the update to any listeners bound to this delegate, passing this GameState as the parameter.
+    // The IDA pseudo C artifact 'UMediaSoundWave' is a known decompiler signature mismatch for UE4 delegates;
+    // the structure confirms it is simply _gameDataUpdatedDelegate.
+    this->_gameDataUpdatedDelegate.Broadcast(this);
+}
+
+
+
+
+void ADBDGameState::OnRep_HatchOpened(uint8_t oldValue)
+{
+    this->OnHatchOpened.Broadcast(this->_isHatchOpen);
+}
+
+
+
+
+void ADBDGameState::OnRep_OnLevelLoaded(uint8_t oldValue)
+{
+    if (oldValue == false && this->_gameLevelLoaded == true)
+    {
+        this->SetupGameLoaded();
+    }
+}
+
+
+
+
+void ADBDGameState::OnRep_OnLevelReadyToPlay(uint8_t oldValue)
+{
+    // Broadcast the dynamic multicast delegate.
+    // Listeners bound in Unreal Engine Blueprints (or C++) will react to this event.
+    // The disassembly shows a call to ProcessMulticastDelegate with no parameters (nullptr),
+    // which in C++ translates simply to a parameterless Broadcast().
+    this->OnLevelReadyToPlay.Broadcast();
+
+    // Call the internal handler for pre-level start logic.
+    // The compiler optimized this into a tail call (jmp) because it is the last operation in the function.
+    /* UNDEFINED ELEMENT */
+    this->OnBeforeLevelStarts();
+}
+
+
+
+
+void ADBDGameState::OnRep_ServerJoiningData()
+{
+    EServerJoiningDataType Step = this->_serverJoiningData.Step;
+    
+    if (Step == KillerServerFound)
+        this->KillerServerFound(&this->_serverJoiningData);
+    
+    if (Step == TravelToKiller)
+        this->TravelToKillerServer();
+}
+
+
+
+
+void ADBDGameState::OnRep_SessionId(FGuid oldValue)
+{
+    // Assign the newly replicated session ID to the global analytics tracker.
+    // The disassembly shows a 128-bit packed assignment (movups), which directly corresponds 
+    // to a standard struct assignment in C++ for the 16-byte FGuid structure.
+    /* UNDEFINED ELEMENT */
+    UDBDAnalytics::_sessionId = this->_sessionId;
+}
+
+
+
+
+void ADBDGameState::OnRep_SurvivorLeft(int32_t oldValue)
+{
+    this->OnSurvivorsLeftChanged.Broadcast(this->_survivorLeft);
+}
+
+
+
+
+FDelegateHandle ADBDGameState::RegisterGameDataListener(const TBaseDelegate<void, ADBDGameState*>& delegate)
+{
+    // Add the provided delegate to the internal multicast delegate.
+    // The Add function automatically generates and returns an FDelegateHandle.
+    // Explicit use of "this->" as per the rules.
+    return this->_gameDataUpdatedDelegate.Add(delegate);
+}
+
+
+
+
+void ADBDGameState::RemoveHeartbeatEmitter(AActor* toRemove)
+{
+    this->_heartbeatEmitters.Remove(toRemove);
+}
+
+
+
+
+void ADBDGameState::RemoveTrap(AInteractable* toRemove)
+{
+    this->_traps.Remove(toRemove);
+}
+
+
+
+
+void ADBDGameState::ResetGameLevelLoaded()
+{
+    this->_gameLevelLoaded = false;
+    this->_levelOfferings.OfferingReady = false;
+    this->_lightingGenerated = false;
+}
+
+
+
+
+void ADBDGameState::Server_UpdateGameRole()
+{
+    // Ensure this logic only runs on the server (Authority).
+    // The disassembly checks the Role byte (offset 0x110) against 3 (ENetRole::ROLE_Authority).
+    if (this->Role != ROLE_Authority)
+    {
+        return;
+    }
+
+    // Local array to track unique identification strings from valid player states.
+    // The disassembly shows the creation, resizing, and cleanup of a TArray<FString>.
+    TArray<FString> UniquePlayerStrings;
+
+    // Iterate through all currently registered player states in the game.
+    for (APlayerState* PlayerState : this->PlayerArray)
+    {
+        // Verify the array element is not null.
+        if (PlayerState != nullptr)
+        {
+            // Attempt to cast the generic APlayerState to the game-specific ADBDPlayerState.
+            // The disassembly explicitly performs a ClassTreeIndex check, which is the internal compiler expansion for Cast<T>().
+            /* UNDEFINED ELEMENT */
+            ADBDPlayerState* DBDPlayerState = Cast<ADBDPlayerState>(PlayerState);
+
+            // Verify the cast succeeded, the object is completely valid (PendingKill bit is 0), 
+            // and the actor is not queued for destruction (bActorIsBeingDestroyed bit is 0).
+            if (IsValid(DBDPlayerState) == true && DBDPlayerState->IsActorBeingDestroyed() == false)
+            {
+                // Check a specific boolean flag on the DBDPlayerState (offset 0x750).
+                /* UNDEFINED ELEMENT */
+                if (DBDPlayerState->GameRole == VE_Slasher)
+                {
+                    // Retrieve a specific FString property from the DBDPlayerState (offset 0x388).
+                    /* UNDEFINED ELEMENT */
+                    FString PlayerString = DBDPlayerState->PlayerName;
+
+                    // If this string hasn't been tracked yet, add it to our unique list.
+                    if (UniquePlayerStrings.Contains(PlayerString) == false)
+                    {
+                        UniquePlayerStrings.Add(PlayerString);
+                    }
+                }
+            }
+        }
+    }
+
+    // The player distribution is considered ready if exactly one unique player string 
+    // was found among all valid connected players meeting the criteria.
+    if (UniquePlayerStrings.Num() == 1)
+    {
+        this->_playerDistributionReady = true;
+    }
+    else
+    {
+        this->_playerDistributionReady = false;
+    }
+}
+
+
+
+
+void ADBDGameState::SetBuiltLevelData(const FName& themeName, const FName& themeWeather, const FString& mapName, int32_t tileCount, const TArray<FDependency>& levelDependencies)
+{
+    // Ensure that this function is only executed on the server.
+    // The disassembly checks the Role byte (offset 0x110) against 3, which corresponds to ENetRole::ROLE_Authority.
+    if (this->Role != ROLE_Authority)
+    {
+        return;
+    }
+
+    // Update the internal built level data structure with the newly provided parameters.
+    // The disassembly shows individual assignments, including TArray::operator= for the FString and TArray dependencies.
+    this->_builtLevelData.ThemeName = themeName;
+    this->_builtLevelData.ThemeWeather = themeWeather;
+    this->_builtLevelData.MapName = mapName;
+    this->_builtLevelData.TileCount = tileCount;
+    this->_builtLevelData.Dependencies = levelDependencies;
+
+    // Trigger the multicast RPC to broadcast the updated level data to all clients.
+    // Unreal Header Tool handles the underlying network serialization for this call.
+    this->Multicast_SetBuiltLevelData(themeName, themeWeather, mapName, tileCount, levelDependencies);
+}
+
+
+
+
+void ADBDGameState::SetGameLevelLoaded()
+{
+    // Ensure that the core loading logic and replication only runs on the server.
+    // The disassembly checks the Role byte (offset 0x110) against 3 (ENetRole::ROLE_Authority).
+    if (this->Role == ROLE_Authority)
+    {
+        // Mark the level as loaded locally.
+        this->_gameLevelLoaded = true;
+
+        // Perform server-side specific setup now that the level is loaded.
+        /* UNDEFINED ELEMENT */
+        this->SetupGameLoaded();
+
+        // Broadcast the loaded state to all connected clients.
+        this->Multicast_SetGameLevelLoaded();
+
+        // Iterate through all currently registered player states in the game.
+        for (APlayerState* PlayerState : this->PlayerArray)
+        {
+            // Verify the array element is not null.
+            if (PlayerState != nullptr)
+            {
+                // Attempt to cast the generic APlayerState to the game-specific ADBDPlayerState.
+                // The disassembly explicitly checks ClassTreeIndex, representing a UE4 Cast<T>().
+                /* UNDEFINED ELEMENT */
+                ADBDPlayerState* DBDPlayerState = Cast<ADBDPlayerState>(PlayerState);
+
+                if (DBDPlayerState != nullptr)
+                {
+                    // Check a specific byte/enum property on the DBDPlayerState (located at offset 0x750).
+                    // We assume 3 represents a specific state (e.g., waiting for level, connected, etc.).
+                    /* UNDEFINED ELEMENT */
+                    if (DBDPlayerState->GameRole == VE_Observer)
+                    {
+                        // Invoke a virtual function on the player state (located at vtable offset 0x750).
+                        // It passes a single boolean argument (dl = 0x1, which is true).
+                        /* UNDEFINED ELEMENT */
+                        /* UNDEFINED VTABLE */
+                        DBDPlayerState->AuthoritySetInParadise(true);
+                    }
+                }
+            }
+        }
+    }
+
+    // Always spawn or initialize the clip manager, regardless of network authority.
+    // The disassembly shows this as an optimized tail call (jmp) at the end of the function.
+    /* UNDEFINED ELEMENT */
+    this->SpawnClipManager();
+}
+
+
+
+
+void ADBDGameState::SetGameSelectedOffering(const TArray<FSelectedOffering>& offerings)
+{
+    // Ensure that this logic only runs on the server.
+    // The disassembly compares the Role byte (inherited from AActor at offset 0x110) against 3, 
+    // which corresponds to ENetRole::ROLE_Authority in Unreal Engine 4.
+    // An explicit positive check is used to avoid the logical NOT operator.
+    if (this->Role == ROLE_Authority)
+    {
+        // Mark the internal offering data as ready.
+        this->_levelOfferings.OfferingReady = true;
+
+        // Copy the provided offerings array into the internal structure.
+        // The disassembly shows a jump to TArray::operator=, which natively handles 
+        // the memory allocation and copying of elements in standard C++.
+        this->_levelOfferings.Offerings = offerings;
+    }
+}

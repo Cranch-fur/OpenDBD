@@ -84,7 +84,7 @@ ADBDGameState::SetServerLeftGame
 ADBDGameState::SetupGameLoaded
 ADBDGameState::SortOfferings
 ADBDGameState::SpawnClipManager
-ADBDGameState::Tick
+ADBDGameState::Tick 
 ADBDGameState::TravelToKillerServer
 ADBDGameState::UnregisterGameDataListener
 ADBDGameState::UpdateCharacterFromGamePreset
