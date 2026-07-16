@@ -1,0 +1,2 @@
+UDBDSlasherData::UDBDSlasherData
+UDBDSlasherData::GetLifetimeReplicatedProps
