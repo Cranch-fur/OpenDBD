@@ -1,0 +1,3 @@
+UDBDDebugInputComponent::UDBDDebugInputComponent
+UDBDDebugInputComponent::TickComponent
+UDBDDebugInputComponent::InitializeComponent
