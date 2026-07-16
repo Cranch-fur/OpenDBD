@@ -1,0 +1,4 @@
+ADBDObserverPlayer::ADBDObserverPlayer
+ADBDObserverPlayer::Tick
+ADBDObserverPlayer::Server_PlayerReady_Implementation
+ADBDObserverPlayer::Server_PlayerReady_Validate
