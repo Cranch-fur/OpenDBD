@@ -1,0 +1,3 @@
+USlasherMovementComponent::USlasherMovementComponent
+USlasherMovementComponent::GetMaxAcceleration
+USlasherMovementComponent::GetMaxSpeed
