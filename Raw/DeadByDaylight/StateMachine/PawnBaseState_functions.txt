@@ -1,0 +1,2 @@
+PawnBaseState::PawnBaseState
+PawnBaseState::IsLocallyControlled
