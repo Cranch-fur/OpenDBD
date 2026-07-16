@@ -1,0 +1,10 @@
+UStillnessTrackerComponent::UStillnessTrackerComponent
+UStillnessTrackerComponent::BeginPlay
+UStillnessTrackerComponent::StartTracking
+UStillnessTrackerComponent::TickComponent
+UStillnessTrackerComponent::GetStillness
+UStillnessTrackerComponent::GetSpeedStillness
+UStillnessTrackerComponent::GetDistanceStillness
+UStillnessTrackerComponent::GetStillnessTimer
+UStillnessTrackerComponent::UpdateStillness
+UStillnessTrackerComponent::ShouldIncreaseCounter
