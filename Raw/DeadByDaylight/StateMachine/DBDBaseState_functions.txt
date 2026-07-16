@@ -1,0 +1,7 @@
+DBDBaseState::DBDBaseState
+DBDBaseState::GetWorld
+DBDBaseState::GetGameInstance
+DBDBaseState::GetGameState
+DBDBaseState::HasAuthority
+DBDBaseState::GetTunableValue
+DBDBaseState::GetKiller
