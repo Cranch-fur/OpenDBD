@@ -1,0 +1,17 @@
+UPerkManager::GetPerkModifier
+UPerkManager::GetMultiplicativeModifierValue
+UPerkManager::GetMultiplicativeModifierValueWithCompoundNegative
+UPerkManager::GetPerkModifierMaxValue
+UPerkManager::GetPerkModifierMinValue
+UPerkManager::HasPerkFlag
+UPerkManager::GetItemAddons
+UPerkManager::GetAllEffects
+UPerkManager::HasAnyAddonWithTag
+UPerkManager::HasAnyEffectWithID
+UPerkManager::HasAllCharacterPerksEquipped
+UPerkManager::HasPerkModifierOfType
+UPerkManager::ApplyMetaModifiers
+UPerkManager::GetPerk
+UPerkManager::GetStatusEffect
+UPerkManager::GetSourceWithModifier
+UPerkManager::GetSourceWithFlag

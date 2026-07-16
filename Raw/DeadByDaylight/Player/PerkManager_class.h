@@ -1,0 +1,52 @@
+class __base(UActorComponent, 0) UPerkManager
+{
+/*0x0000*/  struct UPerkManager::VTable* vtable;
+/*0x0008*/  __inherited enum EObjectFlags UObjectBase::ObjectFlags;
+/*0x000c*/  __inherited int32_t UObjectBase::InternalIndex;
+/*0x0010*/  __inherited class UClass* UObjectBase::ClassPrivate;
+/*0x0018*/  __inherited class FName UObjectBase::NamePrivate;
+/*0x0020*/  __inherited class UObject* UObjectBase::OuterPrivate;
+/*0x0028*/  __inherited struct IInterface_AssetUserData::VTable* IInterface_AssetUserData::vtable;
+/*0x0030*/  __inherited struct FActorComponentTickFunction UActorComponent::PrimaryComponentTick;
+/*0x0080*/  __inherited class TArray<FName, FDefaultAllocator> UActorComponent::ComponentTags;
+/*0x0090*/  __inherited class TArray<UAssetUserData*, FDefaultAllocator> UActorComponent::AssetUserData;
+/*0x00a0*/  __inherited union
+            {
+                uint32_t bRegistered;
+                uint32_t bRenderStateCreated;
+                uint32_t bPhysicsStateCreated;
+                uint32_t bReplicates;
+                uint32_t bNetAddressable;
+                uint32_t bRenderStateDirty;
+                uint32_t bRenderTransformDirty;
+                uint32_t bRenderDynamicDataDirty;
+                uint32_t bRoutedPostRename;
+                uint32_t bAutoRegister;
+                uint32_t bAllowReregistration;
+                uint32_t bTickInEditor;
+                uint32_t bNeverNeedsRenderUpdate;
+                uint32_t bAllowConcurrentTick;
+                uint32_t bAllowAnyoneToDestroyMe;
+                uint32_t bCreatedByConstructionScript_DEPRECATED;
+                uint32_t bInstanceComponent_DEPRECATED;
+                uint32_t bAutoActivate;
+                uint32_t bIsActive;
+                uint32_t bEditableWhenInherited;
+                uint32_t bNavigationRelevant;
+                uint32_t bCanEverAffectNavigation;
+                uint32_t bWantsInitializeComponent;
+                uint32_t bWantsBeginPlay;
+                uint32_t bHasBeenCreated;
+                uint32_t bHasBeenInitialized;
+                uint32_t bHasBegunPlay;
+                uint32_t bIsBeingDestroyed;
+                uint32_t bTickFunctionsRegistered;
+                uint32_t MarkedForEndOfFrameUpdateState;
+            } __bitfielda0;
+/*0x00a4*/  __inherited enum EComponentCreationMethod UActorComponent::CreationMethod;
+/*0x00a8*/  __inherited class AActor* UActorComponent::OwnerPrivate;
+/*0x00b0*/  __inherited class TArray<FSimpleMemberReference, FDefaultAllocator> UActorComponent::UCSModifiedProperties;
+/*0x00c0*/  __inherited class FActorComponentActivatedSignature UActorComponent::OnComponentActivated;
+/*0x00d0*/  __inherited class FActorComponentDeactivateSignature UActorComponent::OnComponentDeactivated;
+/*0x00e0*/  __inherited class UWorld* UActorComponent::WorldPrivate;
+};
