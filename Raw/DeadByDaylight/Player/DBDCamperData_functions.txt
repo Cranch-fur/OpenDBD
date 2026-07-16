@@ -1,0 +1,7 @@
+UDBDCamperData::UDBDCamperData
+UDBDCamperData::GetLifetimeReplicatedProps
+UDBDCamperData::DamageStateChanged
+UDBDCamperData::GetDamageState
+UDBDCamperData::GetImmobilizeState
+UDBDCamperData::GetCurrentGuidedAction
+UDBDCamperData::SetDamageState
