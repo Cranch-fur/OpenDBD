@@ -1,0 +1,3 @@
+UCamperMovementComponent::UCamperMovementComponent
+UCamperMovementComponent::GetMaxSpeed
+UCamperMovementComponent::GetMaxAcceleration
