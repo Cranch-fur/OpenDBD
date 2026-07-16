@@ -1,0 +1,14 @@
+UDBDPlayerData::UDBDPlayerData
+UDBDPlayerData::GetLifetimeReplicatedProps
+UDBDPlayerData::SetLightSpawned
+UDBDPlayerData::SetLoadoutSpawned
+UDBDPlayerData::IsLightSpawned
+UDBDPlayerData::IsLoadoutSpawned
+UDBDPlayerData::Server_SetControlRotation_Implementation
+UDBDPlayerData::Server_LightSpawned_Implementation
+UDBDPlayerData::Server_LoadoutSpawned_Implementation
+UDBDPlayerData::SetIntroCompleted
+UDBDPlayerData::IsIntroCompleted
+UDBDPlayerData::Server_SetIntroCompleted_Implementation
+UDBDPlayerData::Server_LoadoutSpawned_Validate
+UDBDPlayerData::GetPlayerData
