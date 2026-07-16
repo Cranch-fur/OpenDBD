@@ -1,0 +1,13 @@
+UActorClipperComponent::UActorClipperComponent
+UActorClipperComponent::BeginDestroy
+UActorClipperComponent::TickComponent
+UActorClipperComponent::OnOverlapEnter
+UActorClipperComponent::OnOverlapExit
+UActorClipperComponent::HasMatchingTag
+UActorClipperComponent::IsOwnerLocallyObserved
+UActorClipperComponent::RegisterToShapeOverlap
+UActorClipperComponent::UnregisterFromShapeOverlap
+UActorClipperComponent::CollectAllSceneComponents
+UActorClipperComponent::CollectAllSceneComponents
+UActorClipperComponent::ShowActor
+UActorClipperComponent::SetClippingEnabled
